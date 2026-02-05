@@ -130,8 +130,49 @@ impl TagRegistry {
     }
 }
 
+// --- Global Configuration ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalConfig {
+    /// Absolute path to the anchored Toad workspace
+    pub home_pointer: PathBuf,
+}
+
+impl GlobalConfig {
+    pub fn config_dir() -> PathBuf {
+        dirs::home_dir()
+            .expect("Could not find home directory")
+            .join(".toad")
+    }
+
+    pub fn config_path() -> PathBuf {
+        Self::config_dir().join("config.json")
+    }
+
+    pub fn load() -> Result<Option<Self>> {
+        let path = Self::config_path();
+        if !path.exists() {
+            return Ok(None);
+        }
+        let content = fs::read_to_string(path)?;
+        let config = serde_json::from_str(&content)?;
+        Ok(Some(config))
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let dir = Self::config_dir();
+        if !dir.exists() {
+            fs::create_dir_all(&dir)?;
+        }
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(Self::config_path(), content)?;
+        Ok(())
+    }
+}
+
 // --- Workspace Management ---
 
+#[derive(Debug, Clone)]
 pub struct Workspace {
     pub root: PathBuf,
     pub projects_dir: PathBuf,
@@ -161,8 +202,52 @@ pub const HIGH_VALUE_FILES: &[&str] = &[
 ];
 
 impl Workspace {
+    /// Attempts to discover the Toad workspace using 3-tier priority:
+    /// 1. TOAD_ROOT env var
+    /// 2. Upward search for .toad-root
+    /// 3. Global config (~/.toad/config.json)
+    pub fn discover() -> Result<Self> {
+        // 1. Env Var
+        if let Ok(env_root) = std::env::var("TOAD_ROOT") {
+            let path = fs::canonicalize(PathBuf::from(env_root))?;
+            return Ok(Self::with_root(path));
+        }
+
+        // 2. Local Upward Search
+        if let Ok(cwd) = std::env::current_dir() {
+            let mut curr = Some(cwd.as_path());
+            while let Some(p) = curr {
+                if p.join(".toad-root").exists() {
+                    return Ok(Self::with_root(fs::canonicalize(p)?));
+                }
+                curr = p.parent();
+            }
+        }
+
+        // 3. Global Config
+        if let Some(config) = GlobalConfig::load()?
+            && config.home_pointer.exists()
+        {
+            return Ok(Self::with_root(config.home_pointer));
+        }
+
+        // Fallback: If no config exists but we are in a valid-looking dir, auto-initialize
+        if let Ok(cwd) = std::env::current_dir()
+            && cwd.join(".toad-root").exists()
+        {
+            let root = fs::canonicalize(cwd)?;
+            let config = GlobalConfig {
+                home_pointer: root.clone(),
+            };
+            config.save()?;
+            return Ok(Self::with_root(root));
+        }
+
+        bail!("Toad workspace not found. Use 'toad home <path>' to anchor a directory.")
+    }
+
     pub fn new() -> Self {
-        Self::with_root(PathBuf::from("."))
+        Self::discover().unwrap_or_else(|_| Self::with_root(PathBuf::from(".")))
     }
 
     pub fn with_root(root: PathBuf) -> Self {
