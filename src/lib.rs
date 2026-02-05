@@ -87,10 +87,14 @@ pub struct Workspace {
 
 impl Workspace {
     pub fn new() -> Self {
+        Self::with_root(PathBuf::from("."))
+    }
+
+    pub fn with_root(root: PathBuf) -> Self {
         Self {
-            root: PathBuf::from("."),
-            projects_dir: PathBuf::from("projects"),
-            shadows_dir: PathBuf::from("shadows"),
+            projects_dir: root.join("projects"),
+            shadows_dir: root.join("shadows"),
+            root,
         }
     }
 
@@ -105,7 +109,7 @@ impl Workspace {
 
     pub fn ensure_shadows(&self) -> Result<()> {
         if !self.shadows_dir.exists() {
-            fs::create_dir(&self.shadows_dir)?;
+            fs::create_dir_all(&self.shadows_dir)?;
         }
         Ok(())
     }
@@ -120,3 +124,6 @@ impl Default for Workspace {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests;
