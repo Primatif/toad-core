@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -99,12 +99,86 @@ impl Workspace {
     }
 
     pub fn get_fingerprint(&self) -> Result<u64> {
-        let metadata = fs::metadata(&self.projects_dir).context("Failed to stat projects root")?;
-        let mtime = metadata
+        if !self.projects_dir.exists() {
+            bail!("Projects directory does not exist");
+        }
+
+        let mut fingerprint: u64 = 0;
+
+        fn mix(h: &mut u64, v: u64) {
+            *h = h.wrapping_add(v);
+            *h = h.rotate_left(13);
+            *h = h.wrapping_mul(0x517cc1b727220a95);
+        }
+
+        // Level 1: Root directory mtime
+        let root_meta = fs::metadata(&self.projects_dir)?;
+        let root_mtime = root_meta
             .modified()?
             .duration_since(SystemTime::UNIX_EPOCH)?
             .as_secs();
-        Ok(mtime)
+        mix(&mut fingerprint, root_mtime);
+
+        // Level 2 & 3: Scan projects and high-value files
+        let high_value_files = [
+            "Cargo.toml",
+            "Cargo.lock",
+            "package.json",
+            "package-lock.json",
+            "pnpm-lock.yaml",
+            "yarn.lock",
+            "go.mod",
+            "go.sum",
+            "go.work",
+            "pyproject.toml",
+            "requirements.txt",
+            "poetry.lock",
+            "README.md",
+            "README.markdown",
+            "readme.md",
+            "Justfile",
+            ".gitignore",
+            ".git/index",
+        ];
+
+        let mut entries: Vec<_> = fs::read_dir(&self.projects_dir)?
+            .flatten()
+            .filter(|e| e.path().is_dir())
+            .collect();
+        
+        // Sort entries by name to ensure deterministic aggregation
+        entries.sort_by_key(|e| e.file_name());
+
+        for entry in entries {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                let name_hash = name.bytes().fold(0u64, |acc, b| acc.wrapping_add(b as u64));
+                mix(&mut fingerprint, name_hash);
+            }
+
+            // Project dir mtime
+            if let Ok(meta) = fs::metadata(&path) {
+                let mtime = meta
+                    .modified()?
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_secs();
+                mix(&mut fingerprint, mtime);
+            }
+
+            // Scan high-value files
+            for file_name in &high_value_files {
+                let file_path = path.join(file_name);
+                if let Ok(meta) = fs::metadata(&file_path) {
+                    let mtime = meta
+                        .modified()?
+                        .duration_since(SystemTime::UNIX_EPOCH)?
+                        .as_secs();
+                    mix(&mut fingerprint, mtime);
+                }
+            }
+        }
+
+        Ok(fingerprint)
     }
 
     pub fn ensure_shadows(&self) -> Result<()> {
