@@ -139,18 +139,18 @@ pub struct GlobalConfig {
 }
 
 impl GlobalConfig {
-    pub fn config_dir() -> PathBuf {
+    pub fn config_dir() -> Result<PathBuf> {
         dirs::home_dir()
-            .expect("Could not find home directory")
-            .join(".toad")
+            .map(|h| h.join(".toad"))
+            .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))
     }
 
-    pub fn config_path() -> PathBuf {
-        Self::config_dir().join("config.json")
+    pub fn config_path() -> Result<PathBuf> {
+        Ok(Self::config_dir()?.join("config.json"))
     }
 
     pub fn load() -> Result<Option<Self>> {
-        let path = Self::config_path();
+        let path = Self::config_path()?;
         if !path.exists() {
             return Ok(None);
         }
@@ -160,12 +160,12 @@ impl GlobalConfig {
     }
 
     pub fn save(&self) -> Result<()> {
-        let dir = Self::config_dir();
+        let dir = Self::config_dir()?;
         if !dir.exists() {
             fs::create_dir_all(&dir)?;
         }
         let content = serde_json::to_string_pretty(self)?;
-        fs::write(Self::config_path(), content)?;
+        fs::write(Self::config_path()?, content)?;
         Ok(())
     }
 }
