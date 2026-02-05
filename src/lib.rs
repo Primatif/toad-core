@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -145,7 +145,7 @@ impl Workspace {
             .flatten()
             .filter(|e| e.path().is_dir())
             .collect();
-        
+
         // Sort entries by name to ensure deterministic aggregation
         entries.sort_by_key(|e| e.file_name());
 
