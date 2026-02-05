@@ -74,7 +74,60 @@ pub struct ProjectDetail {
     pub vcs_status: VcsStatus,
     pub essence: Option<String>,
     pub hashtags: Vec<String>,
+    pub tags: Vec<String>,
     pub sub_projects: Vec<String>,
+}
+
+// --- Tag Management ---
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TagRegistry {
+    /// Maps project name -> Set of tags
+    pub projects: std::collections::HashMap<String, std::collections::HashSet<String>>,
+}
+
+impl TagRegistry {
+    pub fn load(path: &std::path::Path) -> Result<Self> {
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let content = fs::read_to_string(path)?;
+        let registry = serde_json::from_str(&content)?;
+        Ok(registry)
+    }
+
+    pub fn save(&self, path: &std::path::Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
+    }
+
+    pub fn add_tag(&mut self, project: &str, tag: &str) {
+        self.projects
+            .entry(project.to_string())
+            .or_default()
+            .insert(tag.to_string());
+    }
+
+    pub fn remove_tag(&mut self, project: &str, tag: &str) {
+        if let Some(tags) = self.projects.get_mut(project) {
+            tags.remove(tag);
+        }
+    }
+
+    pub fn get_tags(&self, project: &str) -> Vec<String> {
+        self.projects
+            .get(project)
+            .map(|tags| {
+                let mut t: Vec<String> = tags.iter().cloned().collect();
+                t.sort();
+                t
+            })
+            .unwrap_or_default()
+    }
 }
 
 // --- Workspace Management ---
@@ -183,6 +236,15 @@ impl Workspace {
             }
         }
 
+        // Include tags.json in fingerprint
+        if let Ok(meta) = fs::metadata(self.tags_path()) {
+            let mtime = meta
+                .modified()?
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_secs();
+            mix(&mut fingerprint, mtime);
+        }
+
         Ok(fingerprint)
     }
 
@@ -195,6 +257,10 @@ impl Workspace {
 
     pub fn manifest_path(&self) -> PathBuf {
         self.shadows_dir.join("MANIFEST.md")
+    }
+
+    pub fn tags_path(&self) -> PathBuf {
+        self.shadows_dir.join("tags.json")
     }
 }
 
