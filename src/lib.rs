@@ -85,6 +85,28 @@ pub struct Workspace {
     pub shadows_dir: PathBuf,
 }
 
+/// List of high-value metadata files monitored for context integrity.
+pub const HIGH_VALUE_FILES: &[&str] = &[
+    "Cargo.toml",
+    "Cargo.lock",
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "go.mod",
+    "go.sum",
+    "go.work",
+    "pyproject.toml",
+    "requirements.txt",
+    "poetry.lock",
+    "README.md",
+    "README.markdown",
+    "readme.md",
+    "Justfile",
+    ".gitignore",
+    ".git/index",
+];
+
 impl Workspace {
     pub fn new() -> Self {
         Self::with_root(PathBuf::from("."))
@@ -98,6 +120,11 @@ impl Workspace {
         }
     }
 
+    /// Generates a high-fidelity fingerprint of the managed projects.
+    ///
+    /// [IMPORTANT] This aggregation logic is order-dependent due to the rotational
+    /// mixing algorithm. Project entries are sorted by name before processing to
+    /// ensure deterministic results across different filesystem traversal orders.
     pub fn get_fingerprint(&self) -> Result<u64> {
         if !self.projects_dir.exists() {
             bail!("Projects directory does not exist");
@@ -119,34 +146,12 @@ impl Workspace {
             .as_secs();
         mix(&mut fingerprint, root_mtime);
 
-        // Level 2 & 3: Scan projects and high-value files
-        let high_value_files = [
-            "Cargo.toml",
-            "Cargo.lock",
-            "package.json",
-            "package-lock.json",
-            "pnpm-lock.yaml",
-            "yarn.lock",
-            "go.mod",
-            "go.sum",
-            "go.work",
-            "pyproject.toml",
-            "requirements.txt",
-            "poetry.lock",
-            "README.md",
-            "README.markdown",
-            "readme.md",
-            "Justfile",
-            ".gitignore",
-            ".git/index",
-        ];
-
         let mut entries: Vec<_> = fs::read_dir(&self.projects_dir)?
             .flatten()
             .filter(|e| e.path().is_dir())
             .collect();
 
-        // Sort entries by name to ensure deterministic aggregation
+        // Sort entries by name to ensure deterministic aggregation (required by mix logic)
         entries.sort_by_key(|e| e.file_name());
 
         for entry in entries {
@@ -166,7 +171,7 @@ impl Workspace {
             }
 
             // Scan high-value files
-            for file_name in &high_value_files {
+            for file_name in HIGH_VALUE_FILES {
                 let file_path = path.join(file_name);
                 if let Ok(meta) = fs::metadata(&file_path) {
                     let mtime = meta
