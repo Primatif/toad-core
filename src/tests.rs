@@ -15,7 +15,7 @@ fn test_workspace_paths() {
 fn test_ensure_shadows() -> Result<()> {
     let dir = tempdir()?;
     let ws = Workspace::with_root(dir.path().to_path_buf());
-    
+
     assert!(!ws.shadows_dir.exists());
     ws.ensure_shadows()?;
     assert!(ws.shadows_dir.exists());
@@ -26,10 +26,10 @@ fn test_ensure_shadows() -> Result<()> {
 fn test_get_fingerprint() -> Result<()> {
     let dir = tempdir()?;
     let ws = Workspace::with_root(dir.path().to_path_buf());
-    
+
     // Should fail if projects dir doesn't exist
     assert!(ws.get_fingerprint().is_err());
-    
+
     fs::create_dir(&ws.projects_dir)?;
     let fp = ws.get_fingerprint()?;
     assert!(fp > 0);
