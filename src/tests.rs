@@ -96,3 +96,38 @@ fn test_fingerprint_performance() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn test_project_registry_serialization() -> Result<()> {
+    let mut registry = ProjectRegistry::default();
+    registry.fingerprint = 12345;
+    registry.projects.push(ProjectDetail {
+        name: "test-proj".to_string(),
+        path: PathBuf::from("/tmp/test-proj"),
+        stack: ProjectStack::Rust,
+        activity: ActivityTier::Active,
+        vcs_status: VcsStatus::Clean,
+        essence: Some("A test project".to_string()),
+        hashtags: vec!["test".to_string()],
+        tags: vec!["tag1".to_string()],
+        sub_projects: vec![],
+    });
+
+    // Mock the config dir for testing
+    let dir = tempdir()?;
+    let registry_path = dir.path().join("registry.json");
+
+    // We can't easily override registry_path() without changing the code
+    // So we just test manual save/load logic using the same serde logic
+    let content = serde_json::to_string_pretty(&registry)?;
+    fs::write(&registry_path, content)?;
+
+    let loaded_content = fs::read_to_string(&registry_path)?;
+    let loaded: ProjectRegistry = serde_json::from_str(&loaded_content)?;
+
+    assert_eq!(loaded.fingerprint, 12345);
+    assert_eq!(loaded.projects.len(), 1);
+    assert_eq!(loaded.projects[0].name, "test-proj");
+
+    Ok(())
+}

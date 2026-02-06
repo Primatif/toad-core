@@ -133,6 +133,49 @@ impl TagRegistry {
 // --- Global Configuration ---
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectRegistry {
+    pub fingerprint: u64,
+    pub projects: Vec<ProjectDetail>,
+    pub last_sync: SystemTime,
+}
+
+impl Default for ProjectRegistry {
+    fn default() -> Self {
+        Self {
+            fingerprint: 0,
+            projects: Vec::new(),
+            last_sync: SystemTime::UNIX_EPOCH,
+        }
+    }
+}
+
+impl ProjectRegistry {
+    pub fn registry_path() -> Result<PathBuf> {
+        Ok(GlobalConfig::config_dir()?.join("registry.json"))
+    }
+
+    pub fn load() -> Result<Self> {
+        let path = Self::registry_path()?;
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let content = fs::read_to_string(path)?;
+        let registry = serde_json::from_str(&content)?;
+        Ok(registry)
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = Self::registry_path()?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConfig {
     /// Absolute path to the anchored Toad workspace
     pub home_pointer: PathBuf,
