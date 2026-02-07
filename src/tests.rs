@@ -172,3 +172,59 @@ fn test_project_registry_serialization() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_workspace_discovery_tiers() -> Result<()> {
+    let dir = tempdir()?;
+    let root = dir.path();
+    fs::write(root.join(".toad-root"), "")?;
+
+    // 1. Env Var tier
+    unsafe {
+        std::env::set_var("TOAD_ROOT", root.to_str().unwrap());
+    }
+    let ws = Workspace::discover()?;
+    assert_eq!(ws.root, fs::canonicalize(root)?);
+    unsafe {
+        std::env::remove_var("TOAD_ROOT");
+    }
+
+    // 2. Upward search tier
+    let sub = root.join("a/b/c");
+    fs::create_dir_all(&sub)?;
+    std::env::set_current_dir(&sub)?;
+    let ws = Workspace::discover()?;
+    assert_eq!(ws.root, fs::canonicalize(root)?);
+
+    // 3. Global config tier
+    // We can't easily mock home_dir without more complex crates,
+    // but we can test the logic if we were in a non-workspace dir
+    let other_dir = tempdir()?;
+    std::env::set_current_dir(other_dir.path())?;
+    assert!(Workspace::discover().is_err());
+
+    Ok(())
+}
+
+#[test]
+fn test_global_config_persistence() -> Result<()> {
+    let dir = tempdir()?;
+    let home = dir.path().join("fake-home");
+    fs::create_dir(&home)?;
+    unsafe {
+        std::env::set_var("HOME", home.to_str().unwrap());
+    }
+
+    let config = GlobalConfig {
+        home_pointer: PathBuf::from("/tmp/fake"),
+    };
+    config.save()?;
+
+    let loaded = GlobalConfig::load()?.expect("Config should be loaded");
+    assert_eq!(loaded.home_pointer, PathBuf::from("/tmp/fake"));
+
+    unsafe {
+        std::env::remove_var("HOME");
+    }
+    Ok(())
+}
