@@ -253,12 +253,13 @@ impl Workspace {
 
         // 2. Local Upward Search
         if let Ok(cwd) = std::env::current_dir() {
-            let mut curr = Some(cwd.as_path());
+            let mut curr = Some(cwd);
             while let Some(p) = curr {
-                if p.join(".toad-root").exists() {
-                    return Ok(Self::with_root(fs::canonicalize(p)?));
+                let canonical_p = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
+                if canonical_p.join(".toad-root").exists() {
+                    return Ok(Self::with_root(canonical_p));
                 }
-                curr = p.parent();
+                curr = p.parent().map(|parent| parent.to_path_buf());
             }
         }
 
