@@ -4,28 +4,22 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+pub mod strategy;
+
 // --- Shared Data Models ---
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum ProjectStack {
-    Rust,
-    Go,
-    NodeJS,
-    Python,
-    Monorepo,
-    Generic,
+pub struct StackStrategy {
+    pub name: String,
+    pub match_files: Vec<String>,
+    pub artifacts: Vec<String>,
+    pub tags: Vec<String>,
+    pub priority: i32,
 }
 
-impl std::fmt::Display for ProjectStack {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Rust => write!(f, "Rust"),
-            Self::Go => write!(f, "Go"),
-            Self::NodeJS => write!(f, "NodeJS"),
-            Self::Python => write!(f, "Python"),
-            Self::Monorepo => write!(f, "Monorepo"),
-            Self::Generic => write!(f, "Generic"),
-        }
+impl StackStrategy {
+    pub fn matches(&self, files: &[String]) -> bool {
+        self.match_files.iter().any(|m| files.contains(m))
     }
 }
 
@@ -69,12 +63,13 @@ impl std::fmt::Display for VcsStatus {
 pub struct ProjectDetail {
     pub name: String,
     pub path: PathBuf,
-    pub stack: ProjectStack,
+    pub stack: String,
     pub activity: ActivityTier,
     pub vcs_status: VcsStatus,
     pub essence: Option<String>,
-    pub hashtags: Vec<String>,
     pub tags: Vec<String>,
+    pub taxonomy: Vec<String>,
+    pub artifact_dirs: Vec<String>,
     pub sub_projects: Vec<String>,
 }
 
