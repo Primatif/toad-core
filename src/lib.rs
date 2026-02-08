@@ -73,6 +73,29 @@ pub struct SubmoduleDetail {
     pub actual_commit: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum TargetSource {
+    /// The root repository of a Hub context
+    HubRoot,
+    /// A git submodule managed by the Hub
+    Submodule,
+    /// An independent project within a Pond directory
+    PondProject,
+    /// A local repository not tracked by any manifest/submodule
+    Orphan,
+}
+
+impl std::fmt::Display for TargetSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::HubRoot => write!(f, "HubRoot"),
+            Self::Submodule => write!(f, "Submodule"),
+            Self::PondProject => write!(f, "PondProject"),
+            Self::Orphan => write!(f, "Orphan"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectDetail {
     pub name: String,
@@ -86,6 +109,7 @@ pub struct ProjectDetail {
     pub artifact_dirs: Vec<String>,
     pub sub_projects: Vec<String>,
     pub submodules: Vec<SubmoduleDetail>,
+    pub source: TargetSource,
 }
 
 // --- Tag Management ---

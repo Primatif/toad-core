@@ -153,6 +153,7 @@ fn test_project_registry_serialization() -> Result<()> {
         artifact_dirs: vec!["target".to_string()],
         sub_projects: vec![],
         submodules: vec![],
+        source: TargetSource::PondProject,
     });
 
     // Mock the config dir for testing
