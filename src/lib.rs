@@ -60,6 +60,17 @@ impl std::fmt::Display for VcsStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubmoduleDetail {
+    pub name: String,
+    pub path: PathBuf,
+    pub url: String,
+    pub expected_commit: Option<String>,
+    pub actual_commit: Option<String>,
+    pub initialized: bool,
+    pub vcs_status: VcsStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectDetail {
     pub name: String,
     pub path: PathBuf,
@@ -71,6 +82,7 @@ pub struct ProjectDetail {
     pub taxonomy: Vec<String>,
     pub artifact_dirs: Vec<String>,
     pub sub_projects: Vec<String>,
+    pub submodules: Vec<SubmoduleDetail>,
 }
 
 // --- Tag Management ---
@@ -442,10 +454,6 @@ impl Workspace {
     /// mixing algorithm. Project entries are sorted by name before processing to
     /// ensure deterministic results across different filesystem traversal orders.
     pub fn get_fingerprint(&self) -> Result<u64> {
-        if !self.projects_dir.exists() {
-            bail!("Projects directory does not exist");
-        }
-
         let mut fingerprint: u64 = 0;
 
         fn mix(h: &mut u64, v: u64) {
@@ -454,52 +462,65 @@ impl Workspace {
             *h = h.wrapping_mul(0x517cc1b727220a95);
         }
 
-        // Level 1: Root directory mtime
-        let root_meta = fs::metadata(&self.projects_dir)?;
-        let root_mtime = root_meta
-            .modified()?
-            .duration_since(SystemTime::UNIX_EPOCH)?
-            .as_secs();
-        mix(&mut fingerprint, root_mtime);
+        // 1. Fingerprint the root itself
+        if let Ok(meta) = fs::metadata(&self.root) {
+            let mtime = meta
+                .modified()?
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_secs();
+            mix(&mut fingerprint, mtime);
+        }
 
-        let mut entries: Vec<_> = fs::read_dir(&self.projects_dir)?
-            .flatten()
-            .filter(|e| e.path().is_dir())
-            .collect();
+        // 2. Fingerprint projects in projects_dir if it exists
+        if self.projects_dir.exists() {
+            let mut entries: Vec<_> = fs::read_dir(&self.projects_dir)?
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .collect();
 
-        // Sort entries by name to ensure deterministic aggregation (required by mix logic)
-        entries.sort_by_key(|e| e.file_name());
+            entries.sort_by_key(|e| e.file_name());
 
-        for entry in entries {
-            let path = entry.path();
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                let name_hash = name.bytes().fold(0u64, |acc, b| acc.wrapping_add(b as u64));
-                mix(&mut fingerprint, name_hash);
-            }
+            for entry in entries {
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    let name_hash = name.bytes().fold(0u64, |acc, b| acc.wrapping_add(b as u64));
+                    mix(&mut fingerprint, name_hash);
+                }
 
-            // Project dir mtime
-            if let Ok(meta) = fs::metadata(&path) {
-                let mtime = meta
-                    .modified()?
-                    .duration_since(SystemTime::UNIX_EPOCH)?
-                    .as_secs();
-                mix(&mut fingerprint, mtime);
-            }
-
-            // Scan high-value files
-            for file_name in HIGH_VALUE_FILES {
-                let file_path = path.join(file_name);
-                if let Ok(meta) = fs::metadata(&file_path) {
+                if let Ok(meta) = fs::metadata(&path) {
                     let mtime = meta
                         .modified()?
                         .duration_since(SystemTime::UNIX_EPOCH)?
                         .as_secs();
                     mix(&mut fingerprint, mtime);
                 }
+
+                for file_name in HIGH_VALUE_FILES {
+                    let file_path = path.join(file_name);
+                    if let Ok(meta) = fs::metadata(&file_path) {
+                        let mtime = meta
+                            .modified()?
+                            .duration_since(SystemTime::UNIX_EPOCH)?
+                            .as_secs();
+                        mix(&mut fingerprint, mtime);
+                    }
+                }
             }
         }
 
-        // Include tags.json in fingerprint
+        // 3. Scan root for evidence files (Hub awareness)
+        for file_name in HIGH_VALUE_FILES {
+            let file_path = self.root.join(file_name);
+            if let Ok(meta) = fs::metadata(&file_path) {
+                let mtime = meta
+                    .modified()?
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_secs();
+                mix(&mut fingerprint, mtime);
+            }
+        }
+
+        // 4. Include tags.json in fingerprint
         if let Ok(meta) = fs::metadata(self.tags_path()) {
             let mtime = meta
                 .modified()?
