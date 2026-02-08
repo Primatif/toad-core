@@ -356,6 +356,8 @@ pub struct ProjectContext {
     pub path: PathBuf,
     pub description: Option<String>,
     pub context_type: ContextType,
+    #[serde(default)]
+    pub ai_vendors: Vec<String>,
     pub registered_at: SystemTime,
 }
 
@@ -417,6 +419,7 @@ impl GlobalConfig {
                         path: path.clone(),
                         description: Some("Auto-migrated default context".to_string()),
                         context_type: ContextType::Generic,
+                        ai_vendors: Vec::new(),
                         registered_at: SystemTime::now(),
                     },
                 );
@@ -542,19 +545,28 @@ impl Workspace {
             return Ok(Self::with_root(path, None, None));
         }
 
-        // 2. Local Upward Search
+        // 2. Local Upward Search & Context Matching
         if let Ok(cwd) = std::env::current_dir() {
             let mut curr = Some(cwd);
             while let Some(p) = curr {
                 let canonical_p = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
                 if canonical_p.join(".toad-root").exists() {
+                    // We found a root. Now check if this path matches a registered context in the config.
+                    if let Ok(Some(config)) = GlobalConfig::load(None) {
+                        for (name, ctx) in &config.project_contexts {
+                            if ctx.path == canonical_p {
+                                return Ok(Self::with_root(canonical_p, Some(name.clone()), None));
+                            }
+                        }
+                    }
+                    // Fallback to anonymous root
                     return Ok(Self::with_root(canonical_p, None, None));
                 }
                 curr = p.parent().map(|parent| parent.to_path_buf());
             }
         }
 
-        // 3. Global Config
+        // 3. Global Config Active Context
         if let Some(config) = GlobalConfig::load(None)? {
             let path = config.active_path()?;
             if path.exists() {
@@ -578,6 +590,7 @@ impl Workspace {
                             path: root.clone(),
                             description: Some("Auto-initialized default context".to_string()),
                             context_type: ContextType::Generic,
+                            ai_vendors: Vec::new(),
                             registered_at: SystemTime::now(),
                         },
                     );
