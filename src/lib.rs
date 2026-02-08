@@ -64,10 +64,13 @@ pub struct SubmoduleDetail {
     pub name: String,
     pub path: PathBuf,
     pub url: String,
-    pub expected_commit: Option<String>,
-    pub actual_commit: Option<String>,
+    pub stack: String,
+    pub essence: Option<String>,
+    pub taxonomy: Vec<String>,
     pub initialized: bool,
     pub vcs_status: VcsStatus,
+    pub expected_commit: Option<String>,
+    pub actual_commit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,10 +189,31 @@ impl ProjectRegistry {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum ContextType {
+    /// A root repository with submodules (The Hub)
+    Hub,
+    /// A directory containing multiple independent repositories (The Pond)
+    Pond,
+    /// A generic directory with no specialized multi-repo structure
+    Generic,
+}
+
+impl std::fmt::Display for ContextType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Hub => write!(f, "Hub"),
+            Self::Pond => write!(f, "Pond"),
+            Self::Generic => write!(f, "Generic"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectContext {
     pub path: PathBuf,
     pub description: Option<String>,
+    pub context_type: ContextType,
     pub registered_at: SystemTime,
 }
 
@@ -250,6 +274,7 @@ impl GlobalConfig {
                     ProjectContext {
                         path: path.clone(),
                         description: Some("Auto-migrated default context".to_string()),
+                        context_type: ContextType::Generic,
                         registered_at: SystemTime::now(),
                     },
                 );
@@ -410,6 +435,7 @@ impl Workspace {
                         ProjectContext {
                             path: root.clone(),
                             description: Some("Auto-initialized default context".to_string()),
+                            context_type: ContextType::Generic,
                             registered_at: SystemTime::now(),
                         },
                     );
