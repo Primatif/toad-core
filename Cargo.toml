@@ -1,7 +1,8 @@
 [package]
 name = "toad-core"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.100"

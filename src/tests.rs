@@ -5,7 +5,7 @@ use tempfile::tempdir;
 #[test]
 fn test_workspace_paths() {
     let root = PathBuf::from("/tmp/toad");
-    let ws = Workspace::with_root(root.clone());
+    let ws = Workspace::with_root(root.clone(), None, None);
     assert_eq!(ws.projects_dir, root.join("projects"));
     assert_eq!(ws.shadows_dir, root.join("shadows"));
     assert_eq!(ws.manifest_path(), root.join("shadows").join("MANIFEST.md"));
@@ -14,7 +14,7 @@ fn test_workspace_paths() {
 #[test]
 fn test_ensure_shadows() -> Result<()> {
     let dir = tempdir()?;
-    let ws = Workspace::with_root(dir.path().to_path_buf());
+    let ws = Workspace::with_root(dir.path().to_path_buf(), None, None);
 
     assert!(!ws.shadows_dir.exists());
     ws.ensure_shadows()?;
@@ -25,7 +25,7 @@ fn test_ensure_shadows() -> Result<()> {
 #[test]
 fn test_get_fingerprint() -> Result<()> {
     let dir = tempdir()?;
-    let ws = Workspace::with_root(dir.path().to_path_buf());
+    let ws = Workspace::with_root(dir.path().to_path_buf(), None, None);
 
     // Should fail if projects dir doesn't exist
     assert!(ws.get_fingerprint().is_err());
@@ -68,7 +68,7 @@ fn test_get_fingerprint() -> Result<()> {
 #[test]
 fn test_fingerprint_performance() -> Result<()> {
     let dir = tempdir()?;
-    let ws = Workspace::with_root(dir.path().to_path_buf());
+    let ws = Workspace::with_root(dir.path().to_path_buf(), None, None);
     fs::create_dir(&ws.projects_dir)?;
 
     // Create 100 projects with 5 high-value files each
@@ -217,10 +217,23 @@ fn test_global_config_persistence() -> Result<()> {
 
     let config = GlobalConfig {
         home_pointer: PathBuf::from("/tmp/fake"),
+        active_context: Some("default".to_string()),
+        project_contexts: {
+            let mut m = std::collections::HashMap::new();
+            m.insert(
+                "default".to_string(),
+                ProjectContext {
+                    path: PathBuf::from("/tmp/fake"),
+                    description: None,
+                    registered_at: SystemTime::now(),
+                },
+            );
+            m
+        },
     };
-    config.save()?;
+    config.save(None)?;
 
-    let loaded = GlobalConfig::load()?.expect("Config should be loaded");
+    let loaded = GlobalConfig::load(None)?.expect("Config should be loaded");
     assert_eq!(loaded.home_pointer, PathBuf::from("/tmp/fake"));
 
     unsafe {

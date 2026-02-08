@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 pub mod strategy;
@@ -145,12 +145,16 @@ impl Default for ProjectRegistry {
 }
 
 impl ProjectRegistry {
-    pub fn registry_path() -> Result<PathBuf> {
-        Ok(GlobalConfig::config_dir()?.join("registry.json"))
+    pub fn registry_path(context_name: Option<&str>, base_dir: Option<&Path>) -> Result<PathBuf> {
+        if let Some(name) = context_name {
+            Ok(GlobalConfig::context_dir(name, base_dir)?.join("registry.json"))
+        } else {
+            Ok(GlobalConfig::config_dir(base_dir)?.join("registry.json"))
+        }
     }
 
-    pub fn load() -> Result<Self> {
-        let path = Self::registry_path()?;
+    pub fn load(context_name: Option<&str>, base_dir: Option<&Path>) -> Result<Self> {
+        let path = Self::registry_path(context_name, base_dir)?;
         if !path.exists() {
             return Ok(Self::default());
         }
@@ -159,8 +163,8 @@ impl ProjectRegistry {
         Ok(registry)
     }
 
-    pub fn save(&self) -> Result<()> {
-        let path = Self::registry_path()?;
+    pub fn save(&self, context_name: Option<&str>, base_dir: Option<&Path>) -> Result<()> {
+        let path = Self::registry_path(context_name, base_dir)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -171,39 +175,146 @@ impl ProjectRegistry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectContext {
+    pub path: PathBuf,
+    pub description: Option<String>,
+    pub registered_at: SystemTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConfig {
-    /// Absolute path to the anchored Toad workspace
+    /// Absolute path to the anchored Toad workspace (legacy field)
     pub home_pointer: PathBuf,
+    /// The name of the currently active project context
+    pub active_context: Option<String>,
+    /// All registered project contexts
+    pub project_contexts: std::collections::HashMap<String, ProjectContext>,
 }
 
 impl GlobalConfig {
-    pub fn config_dir() -> Result<PathBuf> {
+    /// Returns the base directory for Toad configuration.
+    pub fn config_dir(base_dir: Option<&Path>) -> Result<PathBuf> {
+        if let Some(base) = base_dir {
+            return Ok(base.to_path_buf());
+        }
+        if let Ok(overridden) = std::env::var("TOAD_CONFIG_DIR") {
+            return Ok(PathBuf::from(overridden));
+        }
         dirs::home_dir()
             .map(|h| h.join(".toad"))
             .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))
     }
 
-    pub fn config_path() -> Result<PathBuf> {
-        Ok(Self::config_dir()?.join("config.json"))
+    pub fn contexts_dir(base_dir: Option<&Path>) -> Result<PathBuf> {
+        Ok(Self::config_dir(base_dir)?.join("contexts"))
     }
 
-    pub fn load() -> Result<Option<Self>> {
-        let path = Self::config_path()?;
+    pub fn context_dir(name: &str, base_dir: Option<&Path>) -> Result<PathBuf> {
+        Ok(Self::contexts_dir(base_dir)?.join(name))
+    }
+
+    pub fn config_path(base_dir: Option<&Path>) -> Result<PathBuf> {
+        Ok(Self::config_dir(base_dir)?.join("config.json"))
+    }
+
+    pub fn load(base_dir: Option<&Path>) -> Result<Option<Self>> {
+        let path = Self::config_path(base_dir)?;
         if !path.exists() {
             return Ok(None);
         }
-        let content = fs::read_to_string(path)?;
-        let config = serde_json::from_str(&content)?;
-        Ok(Some(config))
+        let content = fs::read_to_string(&path)?;
+        let config_val: serde_json::Value = serde_json::from_str(&content)?;
+
+        // Migration logic: If the config is in the old format (no active_context or project_contexts)
+        if config_val.get("active_context").is_none()
+            && config_val.get("project_contexts").is_none()
+        {
+            let home_pointer_val = config_val.get("home_pointer").and_then(|v| v.as_str());
+            if let Some(home_path) = home_pointer_val {
+                let path = PathBuf::from(home_path);
+                let mut project_contexts = std::collections::HashMap::new();
+                project_contexts.insert(
+                    "default".to_string(),
+                    ProjectContext {
+                        path: path.clone(),
+                        description: Some("Auto-migrated default context".to_string()),
+                        registered_at: SystemTime::now(),
+                    },
+                );
+
+                let migrated = Self {
+                    home_pointer: path,
+                    active_context: Some("default".to_string()),
+                    project_contexts,
+                };
+                migrated.save(base_dir)?;
+                migrated.migrate_legacy_artifacts(base_dir)?;
+                return Ok(Some(migrated));
+            }
+        }
+
+        let final_config: Self = serde_json::from_value(config_val)?;
+        Ok(Some(final_config))
     }
 
-    pub fn save(&self) -> Result<()> {
-        let dir = Self::config_dir()?;
+    pub fn save(&self, base_dir: Option<&Path>) -> Result<()> {
+        let dir = Self::config_dir(base_dir)?;
         if !dir.exists() {
             fs::create_dir_all(&dir)?;
         }
         let content = serde_json::to_string_pretty(self)?;
-        fs::write(Self::config_path()?, content)?;
+        fs::write(Self::config_path(base_dir)?, content)?;
+        Ok(())
+    }
+
+    pub fn active_path(&self) -> Result<PathBuf> {
+        if let Some(name) = &self.active_context
+            && let Some(ctx) = self.project_contexts.get(name)
+        {
+            return Ok(ctx.path.clone());
+        }
+        Ok(self.home_pointer.clone())
+    }
+
+    /// Migrates registry.json and shadows/ from legacy locations to the new
+    /// per-context directory (~/.toad/contexts/default/).
+    pub fn migrate_legacy_artifacts(&self, base_dir: Option<&Path>) -> Result<()> {
+        let config_dir = Self::config_dir(base_dir)?;
+        let legacy_registry = config_dir.join("registry.json");
+        let target_dir = Self::context_dir("default", base_dir)?;
+        let target_shadows = target_dir.join("shadows");
+
+        if legacy_registry.exists() || self.home_pointer.join("shadows").exists() {
+            fs::create_dir_all(&target_shadows)?;
+
+            // 1. Move registry.json
+            if legacy_registry.exists() {
+                let target_registry = target_dir.join("registry.json");
+                if !target_registry.exists() {
+                    fs::rename(&legacy_registry, &target_registry)?;
+                    println!("Migrated registry.json to {:?}", target_registry);
+                }
+            }
+
+            // 2. Move shadows/ content
+            let legacy_shadows = self.home_pointer.join("shadows");
+            if legacy_shadows.exists() && legacy_shadows.is_dir() {
+                for entry in fs::read_dir(&legacy_shadows)? {
+                    let entry = entry?;
+                    let target_path = target_shadows.join(entry.file_name());
+                    if !target_path.exists() {
+                        fs::rename(entry.path(), &target_path)?;
+                    }
+                }
+                // Attempt to remove the old directory if it's now empty
+                let _ = fs::remove_dir(&legacy_shadows);
+                println!(
+                    "Migrated shadows from {:?} to {:?}",
+                    legacy_shadows, target_shadows
+                );
+            }
+        }
+
         Ok(())
     }
 }
@@ -215,6 +326,7 @@ pub struct Workspace {
     pub root: PathBuf,
     pub projects_dir: PathBuf,
     pub shadows_dir: PathBuf,
+    pub active_context: Option<String>,
 }
 
 /// List of high-value metadata files monitored for context integrity.
@@ -248,7 +360,7 @@ impl Workspace {
         // 1. Env Var
         if let Ok(env_root) = std::env::var("TOAD_ROOT") {
             let path = fs::canonicalize(PathBuf::from(env_root))?;
-            return Ok(Self::with_root(path));
+            return Ok(Self::with_root(path, None, None));
         }
 
         // 2. Local Upward Search
@@ -257,17 +369,18 @@ impl Workspace {
             while let Some(p) = curr {
                 let canonical_p = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
                 if canonical_p.join(".toad-root").exists() {
-                    return Ok(Self::with_root(canonical_p));
+                    return Ok(Self::with_root(canonical_p, None, None));
                 }
                 curr = p.parent().map(|parent| parent.to_path_buf());
             }
         }
 
         // 3. Global Config
-        if let Some(config) = GlobalConfig::load()?
-            && config.home_pointer.exists()
-        {
-            return Ok(Self::with_root(config.home_pointer));
+        if let Some(config) = GlobalConfig::load(None)? {
+            let path = config.active_path()?;
+            if path.exists() {
+                return Ok(Self::with_root(path, config.active_context, None));
+            }
         }
 
         // Fallback: If no config exists but we are in a valid-looking dir, auto-initialize
@@ -277,23 +390,49 @@ impl Workspace {
             let root = fs::canonicalize(cwd)?;
             let config = GlobalConfig {
                 home_pointer: root.clone(),
+                active_context: Some("default".to_string()),
+                project_contexts: {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert(
+                        "default".to_string(),
+                        ProjectContext {
+                            path: root.clone(),
+                            description: Some("Auto-initialized default context".to_string()),
+                            registered_at: SystemTime::now(),
+                        },
+                    );
+                    m
+                },
             };
-            config.save()?;
-            return Ok(Self::with_root(root));
+            config.save(None)?;
+            return Ok(Self::with_root(root, Some("default".to_string()), None));
         }
 
         bail!("Toad workspace not found. Use 'toad home <path>' to anchor a directory.")
     }
 
     pub fn new() -> Self {
-        Self::discover().unwrap_or_else(|_| Self::with_root(PathBuf::from(".")))
+        Self::discover().unwrap_or_else(|_| Self::with_root(PathBuf::from("."), None, None))
     }
 
-    pub fn with_root(root: PathBuf) -> Self {
+    pub fn with_root(
+        root: PathBuf,
+        active_context: Option<String>,
+        base_dir: Option<&Path>,
+    ) -> Self {
+        let shadows_dir = if let Some(name) = &active_context {
+            GlobalConfig::context_dir(name, base_dir)
+                .map(|d| d.join("shadows"))
+                .unwrap_or_else(|_| root.join("shadows"))
+        } else {
+            root.join("shadows")
+        };
+
         Self {
             projects_dir: root.join("projects"),
-            shadows_dir: root.join("shadows"),
+            shadows_dir,
             root,
+            active_context,
         }
     }
 

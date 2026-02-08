@@ -13,7 +13,7 @@ impl StrategyRegistry {
     /// If builtin is empty, it populates it with defaults.
     /// Custom strategies with the same filename as built-ins will replace them.
     pub fn load() -> Result<Self> {
-        let config_dir = GlobalConfig::config_dir()?;
+        let config_dir = GlobalConfig::config_dir(None)?;
         let builtin_dir = config_dir.join("strategies/builtin");
         let custom_dir = config_dir.join("strategies/custom");
 
