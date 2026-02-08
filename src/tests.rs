@@ -234,6 +234,7 @@ fn test_global_config_persistence() -> Result<()> {
                     path: PathBuf::from("/tmp/fake"),
                     description: None,
                     context_type: ContextType::Generic,
+                    ai_vendors: Vec::new(),
                     registered_at: SystemTime::now(),
                 },
             );
