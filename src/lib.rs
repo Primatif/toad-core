@@ -96,6 +96,78 @@ impl std::fmt::Display for TargetSource {
     }
 }
 
+// --- Git Data Models ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitInfo {
+    pub sha: String,
+    pub author: String,
+    pub message: String,
+    pub timestamp: SystemTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchInfo {
+    pub name: String,
+    pub is_current: bool,
+    pub is_remote: bool,
+    pub upstream: Option<String>,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoStatus {
+    pub current_branch: String,
+    pub head_sha: String,
+    pub vcs_status: VcsStatus,
+    pub local_branches: Vec<BranchInfo>,
+    pub remote_branches: Vec<BranchInfo>,
+    pub unpushed_commits: Vec<CommitInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitOpResult {
+    pub project_name: String,
+    pub command: String,
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreflightResult {
+    pub project_name: String,
+    pub is_clean: bool,
+    pub is_aligned: bool,
+    pub unpushed_count: usize,
+    pub issues: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PrStatus {
+    Open,
+    Merged,
+    Closed,
+    None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchPresence {
+    pub project_name: String,
+    pub exists_locally: bool,
+    pub exists_remotely: bool,
+    pub pr_status: PrStatus,
+    pub pr_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchGroup {
+    pub name: String,
+    pub projects: Vec<BranchPresence>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectDetail {
     pub name: String,
