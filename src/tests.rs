@@ -27,8 +27,8 @@ fn test_get_fingerprint() -> Result<()> {
     let dir = tempdir()?;
     let ws = Workspace::with_root(dir.path().to_path_buf(), None, None);
 
-    // Should fail if projects dir doesn't exist
-    assert!(ws.get_fingerprint().is_err());
+    // Should now succeed even if projects dir doesn't exist (it fingerprints the root)
+    assert!(ws.get_fingerprint().is_ok());
 
     fs::create_dir(&ws.projects_dir)?;
     let fp1 = ws.get_fingerprint()?;
@@ -152,6 +152,8 @@ fn test_project_registry_serialization() -> Result<()> {
         taxonomy: vec!["#rust".to_string(), "#test".to_string()],
         artifact_dirs: vec!["target".to_string()],
         sub_projects: vec![],
+        submodules: vec![],
+        source: TargetSource::PondProject,
     });
 
     // Mock the config dir for testing
@@ -179,6 +181,12 @@ fn test_workspace_discovery_tiers() -> Result<()> {
     let root = dir.path();
     fs::write(root.join(".toad-root"), "")?;
 
+    // Mock config dir to avoid real ~/.toad
+    let config_dir = tempdir()?;
+    unsafe {
+        std::env::set_var("TOAD_CONFIG_DIR", config_dir.path().to_str().unwrap());
+    }
+
     // 1. Env Var tier
     unsafe {
         std::env::set_var("TOAD_ROOT", root.to_str().unwrap());
@@ -189,19 +197,23 @@ fn test_workspace_discovery_tiers() -> Result<()> {
         std::env::remove_var("TOAD_ROOT");
     }
 
-    // 2. Upward search tier
+    // 2. Local Upward Search tier
     let sub = root.join("a/b/c");
     fs::create_dir_all(&sub)?;
+    let original_cwd = std::env::current_dir()?;
     std::env::set_current_dir(&sub)?;
     let ws = Workspace::discover()?;
     assert_eq!(ws.root, fs::canonicalize(root)?);
+    std::env::set_current_dir(original_cwd)?;
 
     // 3. Global config tier
-    // We can't easily mock home_dir without more complex crates,
-    // but we can test the logic if we were in a non-workspace dir
     let other_dir = tempdir()?;
     std::env::set_current_dir(other_dir.path())?;
     assert!(Workspace::discover().is_err());
+
+    unsafe {
+        std::env::remove_var("TOAD_CONFIG_DIR");
+    }
 
     Ok(())
 }
@@ -209,11 +221,7 @@ fn test_workspace_discovery_tiers() -> Result<()> {
 #[test]
 fn test_global_config_persistence() -> Result<()> {
     let dir = tempdir()?;
-    let home = dir.path().join("fake-home");
-    fs::create_dir(&home)?;
-    unsafe {
-        std::env::set_var("HOME", home.to_str().unwrap());
-    }
+    let config_dir = dir.path().to_path_buf();
 
     let config = GlobalConfig {
         home_pointer: PathBuf::from("/tmp/fake"),
@@ -225,19 +233,18 @@ fn test_global_config_persistence() -> Result<()> {
                 ProjectContext {
                     path: PathBuf::from("/tmp/fake"),
                     description: None,
+                    context_type: ContextType::Generic,
+                    ai_vendors: Vec::new(),
                     registered_at: SystemTime::now(),
                 },
             );
             m
         },
     };
-    config.save(None)?;
+    config.save(Some(&config_dir))?;
 
-    let loaded = GlobalConfig::load(None)?.expect("Config should be loaded");
+    let loaded = GlobalConfig::load(Some(&config_dir))?.expect("Config should be loaded");
     assert_eq!(loaded.home_pointer, PathBuf::from("/tmp/fake"));
 
-    unsafe {
-        std::env::remove_var("HOME");
-    }
     Ok(())
 }

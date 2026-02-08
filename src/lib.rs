@@ -60,6 +60,161 @@ impl std::fmt::Display for VcsStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubmoduleDetail {
+    pub name: String,
+    pub path: PathBuf,
+    pub url: String,
+    pub stack: String,
+    pub essence: Option<String>,
+    pub taxonomy: Vec<String>,
+    pub initialized: bool,
+    pub vcs_status: VcsStatus,
+    pub expected_commit: Option<String>,
+    pub actual_commit: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum TargetSource {
+    /// The root repository of a Hub context
+    HubRoot,
+    /// A git submodule managed by the Hub
+    Submodule,
+    /// An independent project within a Pond directory
+    PondProject,
+    /// A local repository not tracked by any manifest/submodule
+    Orphan,
+}
+
+impl std::fmt::Display for TargetSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::HubRoot => write!(f, "HubRoot"),
+            Self::Submodule => write!(f, "Submodule"),
+            Self::PondProject => write!(f, "PondProject"),
+            Self::Orphan => write!(f, "Orphan"),
+        }
+    }
+}
+
+// --- Git Data Models ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommitInfo {
+    pub sha: String,
+    pub author: String,
+    pub message: String,
+    pub timestamp: SystemTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchInfo {
+    pub name: String,
+    pub is_current: bool,
+    pub is_remote: bool,
+    pub upstream: Option<String>,
+    pub ahead: usize,
+    pub behind: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepoStatus {
+    pub current_branch: String,
+    pub head_sha: String,
+    pub vcs_status: VcsStatus,
+    pub local_branches: Vec<BranchInfo>,
+    pub remote_branches: Vec<BranchInfo>,
+    pub unpushed_commits: Vec<CommitInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitOpResult {
+    pub project_name: String,
+    pub command: String,
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreflightResult {
+    pub project_name: String,
+    pub is_clean: bool,
+    pub is_aligned: bool,
+    pub unpushed_count: usize,
+    pub issues: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PrStatus {
+    Open,
+    Merged,
+    Closed,
+    None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchPresence {
+    pub project_name: String,
+    pub exists_locally: bool,
+    pub exists_remotely: bool,
+    pub pr_status: PrStatus,
+    pub pr_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchGroup {
+    pub name: String,
+    pub projects: Vec<BranchPresence>,
+}
+
+// --- Custom Workflows ---
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CustomWorkflow {
+    pub name: String,
+    pub description: Option<String>,
+    pub script_path: PathBuf,
+    pub registered_at: SystemTime,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WorkflowRegistry {
+    pub workflows: std::collections::HashMap<String, CustomWorkflow>,
+    /// Cache of command names used by built-in commands
+    pub reserved_namespaces: Vec<String>,
+}
+
+impl WorkflowRegistry {
+    pub fn registry_path(base_dir: Option<&Path>) -> Result<PathBuf> {
+        Ok(GlobalConfig::config_dir(base_dir)?.join("workflows.json"))
+    }
+
+    pub fn load(base_dir: Option<&Path>) -> Result<Self> {
+        let path = Self::registry_path(base_dir)?;
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let content = fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&content)?)
+    }
+
+    pub fn save(&self, base_dir: Option<&Path>) -> Result<()> {
+        let path = Self::registry_path(base_dir)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
+    }
+
+    pub fn is_reserved(&self, name: &str) -> bool {
+        self.reserved_namespaces.contains(&name.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectDetail {
     pub name: String,
     pub path: PathBuf,
@@ -71,6 +226,8 @@ pub struct ProjectDetail {
     pub taxonomy: Vec<String>,
     pub artifact_dirs: Vec<String>,
     pub sub_projects: Vec<String>,
+    pub submodules: Vec<SubmoduleDetail>,
+    pub source: TargetSource,
 }
 
 // --- Tag Management ---
@@ -174,10 +331,33 @@ impl ProjectRegistry {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub enum ContextType {
+    /// A root repository with submodules (The Hub)
+    Hub,
+    /// A directory containing multiple independent repositories (The Pond)
+    Pond,
+    /// A generic directory with no specialized multi-repo structure
+    Generic,
+}
+
+impl std::fmt::Display for ContextType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Hub => write!(f, "Hub"),
+            Self::Pond => write!(f, "Pond"),
+            Self::Generic => write!(f, "Generic"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectContext {
     pub path: PathBuf,
     pub description: Option<String>,
+    pub context_type: ContextType,
+    #[serde(default)]
+    pub ai_vendors: Vec<String>,
     pub registered_at: SystemTime,
 }
 
@@ -238,6 +418,8 @@ impl GlobalConfig {
                     ProjectContext {
                         path: path.clone(),
                         description: Some("Auto-migrated default context".to_string()),
+                        context_type: ContextType::Generic,
+                        ai_vendors: Vec::new(),
                         registered_at: SystemTime::now(),
                     },
                 );
@@ -363,19 +545,28 @@ impl Workspace {
             return Ok(Self::with_root(path, None, None));
         }
 
-        // 2. Local Upward Search
+        // 2. Local Upward Search & Context Matching
         if let Ok(cwd) = std::env::current_dir() {
             let mut curr = Some(cwd);
             while let Some(p) = curr {
                 let canonical_p = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
                 if canonical_p.join(".toad-root").exists() {
+                    // We found a root. Now check if this path matches a registered context in the config.
+                    if let Ok(Some(config)) = GlobalConfig::load(None) {
+                        for (name, ctx) in &config.project_contexts {
+                            if ctx.path == canonical_p {
+                                return Ok(Self::with_root(canonical_p, Some(name.clone()), None));
+                            }
+                        }
+                    }
+                    // Fallback to anonymous root
                     return Ok(Self::with_root(canonical_p, None, None));
                 }
                 curr = p.parent().map(|parent| parent.to_path_buf());
             }
         }
 
-        // 3. Global Config
+        // 3. Global Config Active Context
         if let Some(config) = GlobalConfig::load(None)? {
             let path = config.active_path()?;
             if path.exists() {
@@ -398,6 +589,8 @@ impl Workspace {
                         ProjectContext {
                             path: root.clone(),
                             description: Some("Auto-initialized default context".to_string()),
+                            context_type: ContextType::Generic,
+                            ai_vendors: Vec::new(),
                             registered_at: SystemTime::now(),
                         },
                     );
@@ -442,10 +635,6 @@ impl Workspace {
     /// mixing algorithm. Project entries are sorted by name before processing to
     /// ensure deterministic results across different filesystem traversal orders.
     pub fn get_fingerprint(&self) -> Result<u64> {
-        if !self.projects_dir.exists() {
-            bail!("Projects directory does not exist");
-        }
-
         let mut fingerprint: u64 = 0;
 
         fn mix(h: &mut u64, v: u64) {
@@ -454,57 +643,80 @@ impl Workspace {
             *h = h.wrapping_mul(0x517cc1b727220a95);
         }
 
-        // Level 1: Root directory mtime
-        let root_meta = fs::metadata(&self.projects_dir)?;
-        let root_mtime = root_meta
-            .modified()?
-            .duration_since(SystemTime::UNIX_EPOCH)?
-            .as_secs();
-        mix(&mut fingerprint, root_mtime);
+        // 1. Fingerprint the root itself
+        if let Ok(meta) = fs::metadata(&self.root) {
+            let mtime = meta
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            mix(&mut fingerprint, mtime);
+        }
 
-        let mut entries: Vec<_> = fs::read_dir(&self.projects_dir)?
-            .flatten()
-            .filter(|e| e.path().is_dir())
-            .collect();
+        // 2. Fingerprint projects in projects_dir if it exists
+        if self.projects_dir.exists() {
+            let mut entries: Vec<_> = fs::read_dir(&self.projects_dir)?
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .collect();
 
-        // Sort entries by name to ensure deterministic aggregation (required by mix logic)
-        entries.sort_by_key(|e| e.file_name());
+            entries.sort_by_key(|e| e.file_name());
 
-        for entry in entries {
-            let path = entry.path();
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                let name_hash = name.bytes().fold(0u64, |acc, b| acc.wrapping_add(b as u64));
-                mix(&mut fingerprint, name_hash);
-            }
+            for entry in entries {
+                let path = entry.path();
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    let name_hash = name.bytes().fold(0u64, |acc, b| acc.wrapping_add(b as u64));
+                    mix(&mut fingerprint, name_hash);
+                }
 
-            // Project dir mtime
-            if let Ok(meta) = fs::metadata(&path) {
-                let mtime = meta
-                    .modified()?
-                    .duration_since(SystemTime::UNIX_EPOCH)?
-                    .as_secs();
-                mix(&mut fingerprint, mtime);
-            }
-
-            // Scan high-value files
-            for file_name in HIGH_VALUE_FILES {
-                let file_path = path.join(file_name);
-                if let Ok(meta) = fs::metadata(&file_path) {
+                if let Ok(meta) = fs::metadata(&path) {
                     let mtime = meta
-                        .modified()?
-                        .duration_since(SystemTime::UNIX_EPOCH)?
-                        .as_secs();
+                        .modified()
+                        .ok()
+                        .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
                     mix(&mut fingerprint, mtime);
+                }
+
+                for file_name in HIGH_VALUE_FILES {
+                    let file_path = path.join(file_name);
+                    if let Ok(meta) = fs::metadata(&file_path) {
+                        let mtime = meta
+                            .modified()
+                            .ok()
+                            .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        mix(&mut fingerprint, mtime);
+                    }
                 }
             }
         }
 
-        // Include tags.json in fingerprint
+        // 3. Scan root for evidence files (Hub awareness)
+        for file_name in HIGH_VALUE_FILES {
+            let file_path = self.root.join(file_name);
+            if let Ok(meta) = fs::metadata(&file_path) {
+                let mtime = meta
+                    .modified()
+                    .ok()
+                    .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                mix(&mut fingerprint, mtime);
+            }
+        }
+
+        // 4. Include tags.json in fingerprint
         if let Ok(meta) = fs::metadata(self.tags_path()) {
             let mtime = meta
-                .modified()?
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_secs();
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             mix(&mut fingerprint, mtime);
         }
 
