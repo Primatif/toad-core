@@ -491,9 +491,11 @@ impl Workspace {
         // 1. Fingerprint the root itself
         if let Ok(meta) = fs::metadata(&self.root) {
             let mtime = meta
-                .modified()?
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_secs();
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             mix(&mut fingerprint, mtime);
         }
 
@@ -515,9 +517,11 @@ impl Workspace {
 
                 if let Ok(meta) = fs::metadata(&path) {
                     let mtime = meta
-                        .modified()?
-                        .duration_since(SystemTime::UNIX_EPOCH)?
-                        .as_secs();
+                        .modified()
+                        .ok()
+                        .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
                     mix(&mut fingerprint, mtime);
                 }
 
@@ -525,9 +529,11 @@ impl Workspace {
                     let file_path = path.join(file_name);
                     if let Ok(meta) = fs::metadata(&file_path) {
                         let mtime = meta
-                            .modified()?
-                            .duration_since(SystemTime::UNIX_EPOCH)?
-                            .as_secs();
+                            .modified()
+                            .ok()
+                            .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
                         mix(&mut fingerprint, mtime);
                     }
                 }
@@ -539,9 +545,11 @@ impl Workspace {
             let file_path = self.root.join(file_name);
             if let Ok(meta) = fs::metadata(&file_path) {
                 let mtime = meta
-                    .modified()?
-                    .duration_since(SystemTime::UNIX_EPOCH)?
-                    .as_secs();
+                    .modified()
+                    .ok()
+                    .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
                 mix(&mut fingerprint, mtime);
             }
         }
@@ -549,9 +557,11 @@ impl Workspace {
         // 4. Include tags.json in fingerprint
         if let Ok(meta) = fs::metadata(self.tags_path()) {
             let mtime = meta
-                .modified()?
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_secs();
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             mix(&mut fingerprint, mtime);
         }
 
