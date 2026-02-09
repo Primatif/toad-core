@@ -1,5 +1,5 @@
 use crate::config::GlobalConfig;
-use anyhow::{Result, bail};
+use crate::error::{ToadError, ToadResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -34,7 +34,7 @@ pub const HIGH_VALUE_FILES: &[&str] = &[
 ];
 
 impl Workspace {
-    pub fn discover() -> Result<Self> {
+    pub fn discover() -> ToadResult<Self> {
         if let Ok(env_root) = std::env::var("TOAD_ROOT") {
             let path = fs::canonicalize(PathBuf::from(env_root))?;
             return Ok(Self::with_root(path, None, None));
@@ -59,7 +59,9 @@ impl Workspace {
         }
 
         if let Some(config) = GlobalConfig::load(None)? {
-            let path = config.active_path()?;
+            let path = config
+                .active_path()
+                .map_err(|e| ToadError::Config(e.to_string()))?;
             if path.exists() {
                 return Ok(Self::with_root(path, config.active_context, None));
             }
@@ -91,7 +93,7 @@ impl Workspace {
             return Ok(Self::with_root(root, Some("default".to_string()), None));
         }
 
-        bail!("Toad workspace not found. Use 'toad home <path>' to anchor a directory.")
+        Err(ToadError::WorkspaceNotFound)
     }
 
     pub fn new() -> Self {
@@ -119,7 +121,7 @@ impl Workspace {
         }
     }
 
-    pub fn get_fingerprint(&self) -> Result<u64> {
+    pub fn get_fingerprint(&self) -> ToadResult<u64> {
         let mut fingerprint: u64 = 0;
 
         fn mix(h: &mut u64, v: u64) {
@@ -204,7 +206,7 @@ impl Workspace {
         Ok(fingerprint)
     }
 
-    pub fn ensure_shadows(&self) -> Result<()> {
+    pub fn ensure_shadows(&self) -> ToadResult<()> {
         if !self.shadows_dir.exists() {
             fs::create_dir_all(&self.shadows_dir)?;
         }

@@ -1,13 +1,16 @@
 pub mod config;
+pub mod error;
 pub mod models;
 pub mod registry;
 pub mod reports;
 pub mod strategy;
+pub mod ui;
 pub mod workflow;
 pub mod workspace;
 
 // Re-export everything for backward compatibility and convenience
 pub use config::{ContextType, GlobalConfig, ProjectContext};
+pub use error::{ToadError, ToadResult};
 pub use models::{
     ActivityTier, ProjectDetail, StackStrategy, SubmoduleDetail, TargetSource, VcsStatus,
 };
@@ -18,6 +21,7 @@ pub use reports::{
     PrStatus, PreflightResult, ProjectAnalytics, ProjectStatus, RepoStatus, SearchResult,
     StatusReport,
 };
+pub use ui::{NoOpReporter, ProgressReporter};
 pub use workflow::{CustomWorkflow, WorkflowRegistry};
 pub use workspace::{HIGH_VALUE_FILES, Workspace};
 
