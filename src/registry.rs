@@ -1,6 +1,6 @@
 use crate::config::GlobalConfig;
 use crate::models::ProjectDetail;
-use anyhow::Result;
+use crate::error::ToadResult;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -14,7 +14,7 @@ pub struct TagRegistry {
 }
 
 impl TagRegistry {
-    pub fn load(path: &Path) -> Result<Self> {
+    pub fn load(path: &Path) -> ToadResult<Self> {
         if !path.exists() {
             return Ok(Self::default());
         }
@@ -23,7 +23,7 @@ impl TagRegistry {
         Ok(registry)
     }
 
-    pub fn save(&self, path: &Path) -> Result<()> {
+    pub fn save(&self, path: &Path) -> ToadResult<()> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -80,7 +80,7 @@ impl ProjectRegistry {
     pub fn registry_path(
         context_name: Option<&str>,
         base_dir: Option<&Path>,
-    ) -> Result<std::path::PathBuf> {
+    ) -> ToadResult<std::path::PathBuf> {
         if let Some(name) = context_name {
             Ok(GlobalConfig::context_dir(name, base_dir)?.join("registry.json"))
         } else {
@@ -88,7 +88,7 @@ impl ProjectRegistry {
         }
     }
 
-    pub fn load(context_name: Option<&str>, base_dir: Option<&Path>) -> Result<Self> {
+    pub fn load(context_name: Option<&str>, base_dir: Option<&Path>) -> ToadResult<Self> {
         let path = Self::registry_path(context_name, base_dir)?;
         if !path.exists() {
             return Ok(Self::default());
@@ -98,7 +98,7 @@ impl ProjectRegistry {
         Ok(registry)
     }
 
-    pub fn save(&self, context_name: Option<&str>, base_dir: Option<&Path>) -> Result<()> {
+    pub fn save(&self, context_name: Option<&str>, base_dir: Option<&Path>) -> ToadResult<()> {
         let path = Self::registry_path(context_name, base_dir)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;

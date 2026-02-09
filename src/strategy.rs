@@ -1,5 +1,5 @@
+use crate::error::ToadResult;
 use crate::{GlobalConfig, StackStrategy};
-use anyhow::Result;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -12,7 +12,7 @@ impl StrategyRegistry {
     /// Loads all strategies from ~/.toad/strategies/builtin and ~/.toad/strategies/custom.
     /// If builtin is empty, it populates it with defaults.
     /// Custom strategies with the same filename as built-ins will replace them.
-    pub fn load() -> Result<Self> {
+    pub fn load() -> ToadResult<Self> {
         let config_dir = GlobalConfig::config_dir(None)?;
         let builtin_dir = config_dir.join("strategies/builtin");
         let custom_dir = config_dir.join("strategies/custom");
@@ -46,7 +46,7 @@ impl StrategyRegistry {
         Ok(Self { strategies })
     }
 
-    fn load_map_from_dir(dir: &Path) -> Result<Vec<(String, StackStrategy)>> {
+    fn load_map_from_dir(dir: &Path) -> ToadResult<Vec<(String, StackStrategy)>> {
         let mut results = Vec::new();
         if !dir.exists() {
             return Ok(results);
@@ -64,21 +64,21 @@ impl StrategyRegistry {
                 let content = fs::read_to_string(&path)?;
                 match toml::from_str::<StackStrategy>(&content) {
                     Ok(strategy) => results.push((filename, strategy)),
-                    Err(e) => println!("WARNING: Failed to load strategy at {:?}: {}", path, e),
+                    Err(_) => continue,
                 }
             }
         }
         Ok(results)
     }
 
-    pub fn load_from_dir(dir: &Path) -> Result<Vec<StackStrategy>> {
+    pub fn load_from_dir(dir: &Path) -> ToadResult<Vec<StackStrategy>> {
         let results = Self::load_map_from_dir(dir)?;
         let mut strategies: Vec<StackStrategy> = results.into_iter().map(|(_, s)| s).collect();
         strategies.sort_by(|a, b| b.priority.cmp(&a.priority));
         Ok(strategies)
     }
 
-    pub fn install_defaults(dir: &Path) -> Result<()> {
+    pub fn install_defaults(dir: &Path) -> ToadResult<()> {
         let rust = r##"name = "Rust"
 match_files = ["Cargo.toml"]
 artifacts = ["target"]

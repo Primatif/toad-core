@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::ToadResult;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -39,7 +39,7 @@ pub struct GlobalConfig {
 }
 
 impl GlobalConfig {
-    pub fn config_dir(base_dir: Option<&Path>) -> Result<PathBuf> {
+    pub fn config_dir(base_dir: Option<&Path>) -> ToadResult<PathBuf> {
         if let Some(base) = base_dir {
             return Ok(base.to_path_buf());
         }
@@ -48,22 +48,22 @@ impl GlobalConfig {
         }
         dirs::home_dir()
             .map(|h| h.join(".toad"))
-            .ok_or_else(|| anyhow::anyhow!("Could not find home directory"))
+            .ok_or_else(|| crate::error::ToadError::Config("Could not find home directory".to_string()))
     }
 
-    pub fn contexts_dir(base_dir: Option<&Path>) -> Result<PathBuf> {
+    pub fn contexts_dir(base_dir: Option<&Path>) -> ToadResult<PathBuf> {
         Ok(Self::config_dir(base_dir)?.join("contexts"))
     }
 
-    pub fn context_dir(name: &str, base_dir: Option<&Path>) -> Result<PathBuf> {
+    pub fn context_dir(name: &str, base_dir: Option<&Path>) -> ToadResult<PathBuf> {
         Ok(Self::contexts_dir(base_dir)?.join(name))
     }
 
-    pub fn config_path(base_dir: Option<&Path>) -> Result<PathBuf> {
+    pub fn config_path(base_dir: Option<&Path>) -> ToadResult<PathBuf> {
         Ok(Self::config_dir(base_dir)?.join("config.json"))
     }
 
-    pub fn load(base_dir: Option<&Path>) -> Result<Option<Self>> {
+    pub fn load(base_dir: Option<&Path>) -> ToadResult<Option<Self>> {
         let path = Self::config_path(base_dir)?;
         if !path.exists() {
             return Ok(None);
@@ -95,7 +95,7 @@ impl GlobalConfig {
                     project_contexts,
                 };
                 migrated.save(base_dir)?;
-                migrated.migrate_legacy_artifacts(base_dir)?;
+                let _ = migrated.migrate_legacy_artifacts(base_dir)?;
                 return Ok(Some(migrated));
             }
         }
@@ -104,7 +104,7 @@ impl GlobalConfig {
         Ok(Some(final_config))
     }
 
-    pub fn save(&self, base_dir: Option<&Path>) -> Result<()> {
+    pub fn save(&self, base_dir: Option<&Path>) -> ToadResult<()> {
         let dir = Self::config_dir(base_dir)?;
         if !dir.exists() {
             fs::create_dir_all(&dir)?;
@@ -114,7 +114,7 @@ impl GlobalConfig {
         Ok(())
     }
 
-    pub fn active_path(&self) -> Result<PathBuf> {
+    pub fn active_path(&self) -> ToadResult<PathBuf> {
         if let Some(name) = &self.active_context
             && let Some(ctx) = self.project_contexts.get(name)
         {
@@ -123,11 +123,12 @@ impl GlobalConfig {
         Ok(self.home_pointer.clone())
     }
 
-    pub fn migrate_legacy_artifacts(&self, base_dir: Option<&Path>) -> Result<()> {
+    pub fn migrate_legacy_artifacts(&self, base_dir: Option<&Path>) -> ToadResult<Vec<String>> {
         let config_dir = Self::config_dir(base_dir)?;
         let legacy_registry = config_dir.join("registry.json");
         let target_dir = Self::context_dir("default", base_dir)?;
         let target_shadows = target_dir.join("shadows");
+        let mut messages = Vec::new();
 
         if legacy_registry.exists() || self.home_pointer.join("shadows").exists() {
             fs::create_dir_all(&target_shadows)?;
@@ -136,7 +137,7 @@ impl GlobalConfig {
                 let target_registry = target_dir.join("registry.json");
                 if !target_registry.exists() {
                     fs::rename(&legacy_registry, &target_registry)?;
-                    println!("Migrated registry.json to {:?}", target_registry);
+                    messages.push(format!("Migrated registry.json to {:?}", target_registry));
                 }
             }
 
@@ -150,13 +151,13 @@ impl GlobalConfig {
                     }
                 }
                 let _ = fs::remove_dir(&legacy_shadows);
-                println!(
+                messages.push(format!(
                     "Migrated shadows from {:?} to {:?}",
                     legacy_shadows, target_shadows
-                );
+                ));
             }
         }
 
-        Ok(())
+        Ok(messages)
     }
 }

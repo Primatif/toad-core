@@ -1,5 +1,5 @@
 use crate::config::GlobalConfig;
-use anyhow::Result;
+use crate::error::ToadResult;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,11 +20,11 @@ pub struct WorkflowRegistry {
 }
 
 impl WorkflowRegistry {
-    pub fn registry_path(base_dir: Option<&Path>) -> Result<PathBuf> {
+    pub fn registry_path(base_dir: Option<&Path>) -> ToadResult<PathBuf> {
         Ok(GlobalConfig::config_dir(base_dir)?.join("workflows.json"))
     }
 
-    pub fn load(base_dir: Option<&Path>) -> Result<Self> {
+    pub fn load(base_dir: Option<&Path>) -> ToadResult<Self> {
         let path = Self::registry_path(base_dir)?;
         if !path.exists() {
             return Ok(Self::default());
@@ -33,7 +33,7 @@ impl WorkflowRegistry {
         Ok(serde_json::from_str(&content)?)
     }
 
-    pub fn save(&self, base_dir: Option<&Path>) -> Result<()> {
+    pub fn save(&self, base_dir: Option<&Path>) -> ToadResult<()> {
         let path = Self::registry_path(base_dir)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
