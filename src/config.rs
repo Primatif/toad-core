@@ -32,11 +32,37 @@ pub struct ProjectContext {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextBudget {
+    #[serde(default = "default_ecosystem_tokens")]
+    pub ecosystem_tokens: usize,
+    #[serde(default = "default_project_tokens")]
+    pub project_tokens: usize,
+}
+
+fn default_ecosystem_tokens() -> usize { 2000 }
+fn default_project_tokens() -> usize { 4000 }
+
+impl Default for ContextBudget {
+    fn default() -> Self {
+        Self {
+            ecosystem_tokens: default_ecosystem_tokens(),
+            project_tokens: default_project_tokens(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConfig {
     pub home_pointer: PathBuf,
     pub active_context: Option<String>,
     pub project_contexts: std::collections::HashMap<String, ProjectContext>,
+    #[serde(default = "default_true")]
+    pub auto_sync: bool,
+    #[serde(default)]
+    pub budget: ContextBudget,
 }
+
+fn default_true() -> bool { true }
 
 impl GlobalConfig {
     pub fn config_dir(base_dir: Option<&Path>) -> ToadResult<PathBuf> {
@@ -44,7 +70,7 @@ impl GlobalConfig {
             return Ok(base.to_path_buf());
         }
         if let Ok(overridden) = std::env::var("TOAD_CONFIG_DIR") {
-            return Ok(PathBuf::from(overridden));
+            return Ok(fs::canonicalize(PathBuf::from(overridden))?);
         }
         dirs::home_dir()
             .map(|h| h.join(".toad"))
@@ -93,6 +119,8 @@ impl GlobalConfig {
                     home_pointer: path,
                     active_context: Some("default".to_string()),
                     project_contexts,
+                    auto_sync: true,
+                    budget: ContextBudget::default(),
                 };
                 migrated.save(base_dir)?;
                 let _ = migrated.migrate_legacy_artifacts(base_dir)?;

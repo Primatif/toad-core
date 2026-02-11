@@ -9,7 +9,7 @@ pub mod workflow;
 pub mod workspace;
 
 // Re-export everything for backward compatibility and convenience
-pub use config::{ContextType, GlobalConfig, ProjectContext};
+pub use config::{ContextBudget, ContextType, GlobalConfig, ProjectContext};
 pub use error::{ToadError, ToadResult};
 pub use models::{
     ActivityTier, ProjectDetail, StackStrategy, SubmoduleDetail, TargetSource, VcsStatus,

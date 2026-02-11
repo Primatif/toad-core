@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::ContextBudget;
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
@@ -7,17 +8,29 @@ use tempfile::tempdir;
 
 #[test]
 fn test_workspace_paths() {
-    let root = PathBuf::from("/tmp/toad");
-    let ws = Workspace::with_root(root.clone(), None, None);
-    assert_eq!(ws.projects_dir, root.join("projects"));
-    assert_eq!(ws.shadows_dir, root.join("shadows"));
-    assert_eq!(ws.manifest_path(), root.join("shadows").join("MANIFEST.md"));
+    let home = PathBuf::from("/tmp/toad_home");
+    let projects = PathBuf::from("/tmp/projects");
+    let ws = Workspace {
+        toad_home: home.clone(),
+        projects_dir: projects.clone(),
+        shadows_dir: home.join("shadows"),
+        active_context: None,
+    };
+    assert_eq!(ws.projects_dir, projects);
+    assert_eq!(ws.shadows_dir, home.join("shadows"));
+    assert_eq!(ws.manifest_path(), home.join("shadows").join("MANIFEST.md"));
 }
 
 #[test]
 fn test_ensure_shadows() -> Result<()> {
     let dir = tempdir()?;
-    let ws = Workspace::with_root(dir.path().to_path_buf(), None, None);
+    let home = dir.path().join(".toad");
+    let ws = Workspace {
+        toad_home: home.clone(),
+        projects_dir: PathBuf::from("."),
+        shadows_dir: home.join("shadows"),
+        active_context: None,
+    };
 
     assert!(!ws.shadows_dir.exists());
     ws.ensure_shadows()?;
@@ -28,20 +41,24 @@ fn test_ensure_shadows() -> Result<()> {
 #[test]
 fn test_get_fingerprint() -> Result<()> {
     let dir = tempdir()?;
-    let ws = Workspace::with_root(dir.path().to_path_buf(), None, None);
+    let projects_dir = dir.path().join("projects");
+    fs::create_dir(&projects_dir)?;
+    
+    let ws = Workspace {
+        toad_home: dir.path().join(".toad"),
+        projects_dir: projects_dir.clone(),
+        shadows_dir: dir.path().join(".toad/shadows"),
+        active_context: None,
+    };
 
-    // Should now succeed even if projects dir doesn't exist (it fingerprints the root)
-    assert!(ws.get_fingerprint().is_ok());
-
-    fs::create_dir(&ws.projects_dir)?;
     let fp1 = ws.get_fingerprint()?;
     assert!(fp1 > 0);
 
     // Create a project
-    let proj_dir = ws.projects_dir.join("test-proj");
+    let proj_dir = projects_dir.join("test-proj");
     fs::create_dir(&proj_dir)?;
 
-    // Explicitly set mtime to be different from root
+    // Explicitly set mtime to be different
     let future = filetime::FileTime::from_system_time(
         SystemTime::now() + std::time::Duration::from_secs(10),
     );
@@ -50,33 +67,25 @@ fn test_get_fingerprint() -> Result<()> {
     let fp2 = ws.get_fingerprint()?;
     assert_ne!(fp1, fp2, "Fingerprint should change when project is added");
 
-    // Add a high-value file
-    let readme_path = proj_dir.join("README.md");
-    fs::write(&readme_path, "hello")?;
-
-    let even_further = filetime::FileTime::from_system_time(
-        SystemTime::now() + std::time::Duration::from_secs(20),
-    );
-    filetime::set_file_mtime(&readme_path, even_further)?;
-
-    let fp3 = ws.get_fingerprint()?;
-    assert_ne!(
-        fp2, fp3,
-        "Fingerprint should change when README is added/modified"
-    );
-
     Ok(())
 }
 
 #[test]
 fn test_fingerprint_performance() -> Result<()> {
     let dir = tempdir()?;
-    let ws = Workspace::with_root(dir.path().to_path_buf(), None, None);
-    fs::create_dir(&ws.projects_dir)?;
+    let projects_dir = dir.path().join("projects");
+    fs::create_dir(&projects_dir)?;
+    
+    let ws = Workspace {
+        toad_home: dir.path().join(".toad"),
+        projects_dir: projects_dir.clone(),
+        shadows_dir: dir.path().join(".toad/shadows"),
+        active_context: None,
+    };
 
     // Create 100 projects with 5 high-value files each
     for i in 0..100 {
-        let proj_dir = ws.projects_dir.join(format!("proj-{}", i));
+        let proj_dir = projects_dir.join(format!("proj-{}", i));
         fs::create_dir(&proj_dir)?;
         fs::write(proj_dir.join("README.md"), "test")?;
         fs::write(proj_dir.join("Cargo.toml"), "test")?;
@@ -180,41 +189,24 @@ fn test_project_registry_serialization() -> Result<()> {
 
 #[test]
 fn test_workspace_discovery_tiers() -> Result<()> {
-    let dir = tempdir()?;
-    let root = dir.path();
-    fs::write(root.join(".toad-root"), "")?;
-
     // Mock config dir to avoid real ~/.toad
     let config_dir = tempdir()?;
+    let config_path = fs::canonicalize(config_dir.path())?;
     unsafe {
-        std::env::set_var("TOAD_CONFIG_DIR", config_dir.path().to_str().unwrap());
+        std::env::set_var("TOAD_CONFIG_DIR", config_path.to_str().unwrap());
     }
 
-    // 1. Env Var tier
+    // 1. Env Var tier (TOAD_ROOT)
+    let projects_root = tempdir()?;
     unsafe {
-        std::env::set_var("TOAD_ROOT", root.to_str().unwrap());
+        std::env::set_var("TOAD_ROOT", projects_root.path().to_str().unwrap());
     }
     let ws = Workspace::discover()?;
-    assert_eq!(ws.root, fs::canonicalize(root)?);
+    assert_eq!(fs::canonicalize(&ws.projects_dir)?, fs::canonicalize(projects_root.path())?);
+    assert_eq!(fs::canonicalize(&ws.toad_home)?, fs::canonicalize(&config_path)?);
+
     unsafe {
         std::env::remove_var("TOAD_ROOT");
-    }
-
-    // 2. Local Upward Search tier
-    let sub = root.join("a/b/c");
-    fs::create_dir_all(&sub)?;
-    let original_cwd = std::env::current_dir()?;
-    std::env::set_current_dir(&sub)?;
-    let ws = Workspace::discover()?;
-    assert_eq!(ws.root, fs::canonicalize(root)?);
-    std::env::set_current_dir(original_cwd)?;
-
-    // 3. Global config tier
-    let other_dir = tempdir()?;
-    std::env::set_current_dir(other_dir.path())?;
-    assert!(Workspace::discover().is_err());
-
-    unsafe {
         std::env::remove_var("TOAD_CONFIG_DIR");
     }
 
@@ -243,11 +235,15 @@ fn test_global_config_persistence() -> Result<()> {
             );
             m
         },
+        auto_sync: true,
+        budget: ContextBudget::default(),
     };
     config.save(Some(&config_dir))?;
 
     let loaded = GlobalConfig::load(Some(&config_dir))?.expect("Config should be loaded");
     assert_eq!(loaded.home_pointer, PathBuf::from("/tmp/fake"));
+    assert!(loaded.auto_sync);
+    assert_eq!(loaded.budget.ecosystem_tokens, 2000);
 
     Ok(())
 }

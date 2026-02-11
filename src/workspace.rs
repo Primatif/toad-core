@@ -1,13 +1,16 @@
 use crate::config::GlobalConfig;
-use crate::error::{ToadError, ToadResult};
+use crate::error::ToadResult;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
-    pub root: PathBuf,
+    /// The global Toad home directory (e.g., ~/.toad/)
+    pub toad_home: PathBuf,
+    /// The project directory for the current context (e.g., /path/to/my-code/)
     pub projects_dir: PathBuf,
+    /// Metadata storage for the current context (e.g., ~/.toad/contexts/default/shadows/)
     pub shadows_dir: PathBuf,
     pub active_context: Option<String>,
 }
@@ -35,88 +38,83 @@ pub const HIGH_VALUE_FILES: &[&str] = &[
 
 impl Workspace {
     pub fn discover() -> ToadResult<Self> {
-        if let Ok(env_root) = std::env::var("TOAD_ROOT") {
-            let path = fs::canonicalize(PathBuf::from(env_root))?;
-            return Ok(Self::with_root(path, None, None));
-        }
+        // Tier 1: TOAD_HOME env var
+        let toad_home = if let Ok(env_home) = std::env::var("TOAD_HOME") {
+            fs::canonicalize(PathBuf::from(env_home))?
+        } else {
+            GlobalConfig::config_dir(None)?
+        };
 
-        if let Ok(cwd) = std::env::current_dir() {
-            let mut curr = Some(cwd);
-            while let Some(p) = curr {
-                let canonical_p = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
-                if canonical_p.join(".toad-root").exists() {
-                    if let Ok(Some(config)) = GlobalConfig::load(None) {
-                        for (name, ctx) in &config.project_contexts {
-                            if ctx.path == canonical_p {
-                                return Ok(Self::with_root(canonical_p, Some(name.clone()), None));
-                            }
-                        }
-                    }
-                    return Ok(Self::with_root(canonical_p, None, None));
-                }
-                curr = p.parent().map(|parent| parent.to_path_buf());
-            }
-        }
+        // Tier 2: TOAD_ROOT env var (legacy support / projects_dir override)
+        let env_root = std::env::var("TOAD_ROOT").ok().map(PathBuf::from);
 
-        if let Some(config) = GlobalConfig::load(None)? {
-            let path = config
-                .active_path()
-                .map_err(|e| ToadError::Config(e.to_string()))?;
-            if path.exists() {
-                return Ok(Self::with_root(path, config.active_context, None));
-            }
-        }
-
-        if let Ok(cwd) = std::env::current_dir()
-            && cwd.join(".toad-root").exists()
-        {
-            let root = fs::canonicalize(cwd)?;
-            let config = GlobalConfig {
-                home_pointer: root.clone(),
-                active_context: Some("default".to_string()),
-                project_contexts: {
-                    let mut m = std::collections::HashMap::new();
-                    m.insert(
-                        "default".to_string(),
-                        crate::config::ProjectContext {
-                            path: root.clone(),
-                            description: Some("Auto-initialized default context".to_string()),
-                            context_type: crate::config::ContextType::Generic,
-                            ai_vendors: Vec::new(),
-                            registered_at: SystemTime::now(),
-                        },
-                    );
-                    m
-                },
+        if let Ok(Some(config)) = GlobalConfig::load(None) {
+            let active_context_name = config.active_context.clone();
+            let projects_dir = if let Some(root) = env_root {
+                root
+            } else {
+                config.active_path().unwrap_or_else(|_| PathBuf::from("."))
             };
-            config.save(None)?;
-            return Ok(Self::with_root(root, Some("default".to_string()), None));
+            
+            let projects_dir = if projects_dir.exists() {
+                fs::canonicalize(projects_dir)?
+            } else {
+                projects_dir
+            };
+
+            let shadows_dir = if let Some(name) = &active_context_name {
+                GlobalConfig::context_dir(name, None)?.join("shadows")
+            } else {
+                toad_home.join("shadows")
+            };
+
+            return Ok(Self {
+                toad_home,
+                projects_dir,
+                shadows_dir,
+                active_context: active_context_name,
+            });
         }
 
-        Err(ToadError::WorkspaceNotFound)
+        // Fallback: If no config, we might be in an uninitialized state
+        Ok(Self {
+            toad_home: toad_home.clone(),
+            projects_dir: env_root.unwrap_or_else(|| PathBuf::from(".")),
+            shadows_dir: toad_home.join("shadows"),
+            active_context: None,
+        })
     }
 
     pub fn new() -> Self {
-        Self::discover().unwrap_or_else(|_| Self::with_root(PathBuf::from("."), None, None))
+        Self::discover().unwrap_or_else(|_| {
+             let home = dirs::home_dir().map(|h| h.join(".toad")).unwrap_or_else(|| PathBuf::from("."));
+             Self {
+                toad_home: home.clone(),
+                projects_dir: PathBuf::from("."),
+                shadows_dir: home.join("shadows"),
+                active_context: None,
+             }
+        })
     }
 
     pub fn with_root(
         root: PathBuf,
         active_context: Option<String>,
-        base_dir: Option<&Path>,
+        _base_dir: Option<&Path>,
     ) -> Self {
+        let toad_home = GlobalConfig::config_dir(None).unwrap_or_else(|_| PathBuf::from("."));
         let shadows_dir = if let Some(name) = &active_context {
-            GlobalConfig::context_dir(name, base_dir)
+            GlobalConfig::context_dir(name, None)
                 .map(|d| d.join("shadows"))
-                .unwrap_or_else(|_| root.join("shadows"))
+                .unwrap_or_else(|_| toad_home.join("shadows"))
         } else {
-            root.join("shadows")
+            toad_home.join("shadows")
         };
 
         Self {
-            projects_dir: root.join("projects"),
+            projects_dir: root,
             shadows_dir,
-            root,
+            toad_home,
             active_context,
         }
     }
@@ -130,7 +128,7 @@ impl Workspace {
             *h = h.wrapping_mul(0x517cc1b727220a95);
         }
 
-        if let Ok(meta) = fs::metadata(&self.root) {
+        if let Ok(meta) = fs::metadata(&self.projects_dir) {
             let mtime = meta
                 .modified()
                 .ok()
@@ -181,7 +179,7 @@ impl Workspace {
         }
 
         for file_name in HIGH_VALUE_FILES {
-            let file_path = self.root.join(file_name);
+            let file_path = self.projects_dir.join(file_name);
             if let Ok(meta) = fs::metadata(&file_path) {
                 let mtime = meta
                     .modified()
