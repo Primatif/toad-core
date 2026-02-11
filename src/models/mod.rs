@@ -99,4 +99,8 @@ pub struct ProjectDetail {
     pub sub_projects: Vec<String>,
     pub submodules: Vec<SubmoduleDetail>,
     pub source: TargetSource,
+    #[serde(default)]
+    pub total_size: u64,
+    #[serde(default)]
+    pub bloat_index: f64,
 }

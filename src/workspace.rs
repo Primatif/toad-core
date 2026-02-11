@@ -329,6 +329,10 @@ impl Workspace {
     pub fn tags_path(&self) -> PathBuf {
         self.shadows_dir.join("tags.json")
     }
+
+    pub fn context_json_path(&self) -> PathBuf {
+        self.shadows_dir.join("context.json")
+    }
 }
 
 impl Default for Workspace {
