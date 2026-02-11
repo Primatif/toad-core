@@ -3,8 +3,11 @@ use crate::config::ContextBudget;
 use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::SystemTime;
 use tempfile::tempdir;
+
+static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_workspace_paths() {
@@ -129,22 +132,58 @@ fn test_stack_strategy_serialization() -> Result<()> {
 }
 
 #[test]
-fn test_strategy_registry_install_and_load() -> Result<()> {
+fn test_strategy_registry_embedded_and_custom() -> Result<()> {
+    let _lock = ENV_MUTEX.lock().unwrap();
+    // Mock config dir
     let dir = tempdir()?;
-    let builtin_dir = dir.path().join("builtin");
-    fs::create_dir(&builtin_dir)?;
+    let config_path = fs::canonicalize(dir.path())?;
+    unsafe {
+        std::env::set_var("TOAD_CONFIG_DIR", config_path.to_str().unwrap());
+    }
 
-    crate::strategy::StrategyRegistry::install_defaults(&builtin_dir)?;
+    // 1. Test embedded defaults
+    let registry = crate::strategy::StrategyRegistry::load()?;
+    assert!(registry.strategies.len() >= 8);
+    assert!(registry.strategies.iter().any(|s| s.name == "Rust"));
 
-    let strategies = crate::strategy::StrategyRegistry::load_from_dir(&builtin_dir)?;
-    assert!(strategies.len() >= 5);
+    // 2. Test custom override
+    let custom_dir = dir.path().join("strategies/custom");
+    fs::create_dir_all(&custom_dir)?;
+    
+    let rust_override = r##"name = "Rust Custom"
+match_files = ["Cargo.toml"]
+artifacts = ["custom_target"]
+tags = ["#rust", "#custom"]
+priority = 100
+"##;
+    fs::write(custom_dir.join("rust.toml"), rust_override)?;
 
-    let rust = strategies
-        .iter()
-        .find(|s| s.name == "Rust")
-        .expect("Rust strategy missing");
-    assert_eq!(rust.match_files, vec!["Cargo.toml".to_string()]);
-    assert_eq!(rust.artifacts, vec!["target".to_string()]);
+    let registry2 = crate::strategy::StrategyRegistry::load()?;
+    let rust = registry2.strategies.iter().find(|s| s.match_files.contains(&"Cargo.toml".to_string())).unwrap();
+    assert_eq!(rust.name, "Rust Custom");
+    assert_eq!(rust.priority, 100);
+    assert_eq!(rust.priority, 100);
+
+    unsafe {
+        std::env::remove_var("TOAD_CONFIG_DIR");
+    }
+    Ok(())
+}
+
+#[test]
+fn test_strategy_registry_load_from_dir() -> Result<()> {
+    let dir = tempdir()?;
+    let rust_toml = r##"name = "Rust"
+match_files = ["Cargo.toml"]
+artifacts = ["target"]
+tags = ["#rust"]
+priority = 10
+"##;
+    fs::write(dir.path().join("rust.toml"), rust_toml)?;
+
+    let strategies = crate::strategy::StrategyRegistry::load_from_dir(dir.path())?;
+    assert_eq!(strategies.len(), 1);
+    assert_eq!(strategies[0].name, "Rust");
 
     Ok(())
 }
@@ -189,6 +228,7 @@ fn test_project_registry_serialization() -> Result<()> {
 
 #[test]
 fn test_workspace_discovery_tiers() -> Result<()> {
+    let _lock = ENV_MUTEX.lock().unwrap();
     // Mock config dir to avoid real ~/.toad
     let config_dir = tempdir()?;
     let config_path = fs::canonicalize(config_dir.path())?;
@@ -198,15 +238,48 @@ fn test_workspace_discovery_tiers() -> Result<()> {
 
     // 1. Env Var tier (TOAD_ROOT)
     let projects_root = tempdir()?;
+    let projects_root_path = fs::canonicalize(projects_root.path())?;
     unsafe {
-        std::env::set_var("TOAD_ROOT", projects_root.path().to_str().unwrap());
+        std::env::set_var("TOAD_ROOT", projects_root_path.to_str().unwrap());
     }
     let ws = Workspace::discover()?;
-    assert_eq!(fs::canonicalize(&ws.projects_dir)?, fs::canonicalize(projects_root.path())?);
+    assert_eq!(fs::canonicalize(&ws.projects_dir)?, projects_root_path);
     assert_eq!(fs::canonicalize(&ws.toad_home)?, fs::canonicalize(&config_path)?);
 
     unsafe {
         std::env::remove_var("TOAD_ROOT");
+    }
+
+    // 2. Legacy Upward Migration tier
+    let sandbox = tempdir()?;
+    let legacy_root = fs::canonicalize(sandbox.path())?.join("my-legacy-proj");
+    fs::create_dir_all(&legacy_root)?;
+    fs::write(legacy_root.join(".toad-root"), "legacy")?;
+    fs::create_dir(legacy_root.join("shadows"))?;
+    fs::write(legacy_root.join("shadows/tags.json"), "{}")?;
+
+    // Fresh config dir for this part
+    let config_dir2 = tempdir()?;
+    let config_path2 = fs::canonicalize(config_dir2.path())?;
+    unsafe {
+        std::env::set_var("TOAD_CONFIG_DIR", config_path2.to_str().unwrap());
+    }
+
+    let original_cwd = std::env::current_dir()?;
+    std::env::set_current_dir(&legacy_root)?;
+
+    let ws2 = Workspace::discover()?;
+    assert_eq!(fs::canonicalize(&ws2.projects_dir)?, fs::canonicalize(&legacy_root)?);
+    assert_eq!(ws2.active_context, Some("default".to_string()));
+    
+    // Check if global config was created
+    assert!(config_path2.join("config.json").exists());
+    // Check if shadows were migrated to the context dir
+    assert!(config_path2.join("contexts/default/shadows/tags.json").exists());
+
+    std::env::set_current_dir(original_cwd)?;
+
+    unsafe {
         std::env::remove_var("TOAD_CONFIG_DIR");
     }
 
