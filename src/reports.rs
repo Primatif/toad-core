@@ -1,4 +1,5 @@
 use crate::config::ContextType;
+use crate::error::ToadResult;
 use crate::models::{ActivityTier, ProjectDetail, VcsStatus};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -133,6 +134,21 @@ pub struct AnalyticsReport {
 pub struct SearchResult {
     pub query: String,
     pub matches: Vec<ProjectDetail>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CleanResult {
+    pub bytes_reclaimed: u64,
+    pub files_removed: usize,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchCleanReport {
+    pub results: Vec<(String, ToadResult<CleanResult>)>,
+    pub total_reclaimed: u64,
+    pub success_count: usize,
+    pub fail_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,19 +1,20 @@
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, Serialize, Deserialize)]
 pub enum ToadError {
     #[error("Workspace not found. Use 'toad home <path>' to anchor a directory.")]
     WorkspaceNotFound,
 
     #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(String),
 
     #[error("Serialization error: {0}")]
-    Serde(#[from] serde_json::Error),
+    Serde(String),
 
     #[error("Toml error: {0}")]
-    Toml(#[from] toml::de::Error),
+    Toml(String),
 
     #[error("Git error: {0}")]
     Git(String),
@@ -37,10 +38,34 @@ pub enum ToadError {
     Discovery(String),
 
     #[error("Other error: {0}")]
-    Anyhow(#[from] anyhow::Error),
+    Anyhow(String),
 
     #[error("{0}")]
     Other(String),
+}
+
+impl From<std::io::Error> for ToadError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for ToadError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Serde(e.to_string())
+    }
+}
+
+impl From<toml::de::Error> for ToadError {
+    fn from(e: toml::de::Error) -> Self {
+        Self::Toml(e.to_string())
+    }
+}
+
+impl From<anyhow::Error> for ToadError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Anyhow(e.to_string())
+    }
 }
 
 pub type ToadResult<T> = std::result::Result<T, ToadError>;

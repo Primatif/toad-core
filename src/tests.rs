@@ -269,6 +269,9 @@ fn test_workspace_discovery_tiers() -> Result<()> {
 
     let original_cwd = std::env::current_dir()?;
     std::env::set_current_dir(&legacy_root)?;
+    unsafe {
+        std::env::set_var("TOAD_ROOT", legacy_root.to_str().unwrap());
+    }
 
     let ws2 = Workspace::discover()?;
     assert_eq!(fs::canonicalize(&ws2.projects_dir)?, fs::canonicalize(&legacy_root)?);
@@ -280,6 +283,9 @@ fn test_workspace_discovery_tiers() -> Result<()> {
     assert!(config_path2.join("contexts/default/shadows/tags.json").exists());
 
     std::env::set_current_dir(original_cwd)?;
+    unsafe {
+        std::env::remove_var("TOAD_ROOT");
+    }
 
     unsafe {
         std::env::remove_var("TOAD_CONFIG_DIR");

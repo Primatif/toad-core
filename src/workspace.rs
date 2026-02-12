@@ -125,20 +125,6 @@ impl Workspace {
             });
         }
 
-        // Tier 4: Upward legacy discovery (.toad-root)
-        if let Ok(cwd) = std::env::current_dir() {
-            let mut curr = Some(cwd);
-            while let Some(p) = curr {
-                let canonical_p = fs::canonicalize(&p).unwrap_or_else(|_| p.clone());
-                if canonical_p.join(".toad-root").exists() {
-                    // Legacy workspace found, and no global config exists.
-                    // Migrate it!
-                    return Self::migrate_legacy_to_global(canonical_p);
-                }
-                curr = p.parent().map(|parent| parent.to_path_buf());
-            }
-        }
-
         // Fallback: If no config, we might be in an uninitialized state
         Ok(Self {
             toad_home: toad_home.clone(),
@@ -336,6 +322,12 @@ impl Workspace {
 
     pub fn changelog_path(&self) -> PathBuf {
         self.shadows_dir.join("CHANGELOG.json")
+    }
+
+    pub fn stored_fingerprint(&self) -> u64 {
+        crate::registry::ProjectRegistry::load(self.active_context.as_deref(), None)
+            .map(|r| r.fingerprint)
+            .unwrap_or(0)
     }
 }
 

@@ -18,10 +18,10 @@ pub use models::{
 };
 pub use registry::{ProjectRegistry, TagRegistry};
 pub use reports::{
-    AnalyticsReport, BatchOperationReport, BranchGroup, BranchInfo, BranchPresence, CommitInfo,
-    GitOpResult, MultiRepoGitReport, MultiRepoStatusItem, MultiRepoStatusReport, OperationResult,
-    PrStatus, PreflightResult, ProjectAnalytics, ProjectStatus, RepoStatus, SearchResult,
-    StatusReport,
+    AnalyticsReport, BatchCleanReport, BatchOperationReport, BranchGroup, BranchInfo,
+    BranchPresence, CleanResult, CommitInfo, GitOpResult, MultiRepoGitReport, MultiRepoStatusItem,
+    MultiRepoStatusReport, OperationResult, PrStatus, PreflightResult, ProjectAnalytics,
+    ProjectStatus, RepoStatus, SearchResult, StatusReport,
 };
 pub use ui::{NoOpReporter, ProgressReporter};
 pub use workflow::{CustomWorkflow, WorkflowRegistry};
