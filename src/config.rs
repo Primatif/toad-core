@@ -64,13 +64,30 @@ pub struct GlobalConfig {
 
 fn default_true() -> bool { true }
 
+impl Default for GlobalConfig {
+    fn default() -> Self {
+        Self {
+            home_pointer: PathBuf::from("."),
+            active_context: None,
+            project_contexts: std::collections::HashMap::new(),
+            auto_sync: true,
+            budget: ContextBudget::default(),
+        }
+    }
+}
+
 impl GlobalConfig {
     pub fn config_dir(base_dir: Option<&Path>) -> ToadResult<PathBuf> {
         if let Some(base) = base_dir {
             return Ok(base.to_path_buf());
         }
         if let Ok(overridden) = std::env::var("TOAD_CONFIG_DIR") {
-            return Ok(fs::canonicalize(PathBuf::from(overridden))?);
+            let p = PathBuf::from(overridden);
+            if p.exists() {
+                return Ok(fs::canonicalize(p)?);
+            } else {
+                return Ok(p);
+            }
         }
         dirs::home_dir()
             .map(|h| h.join(".toad"))

@@ -5,6 +5,7 @@ pub mod registry;
 pub mod reports;
 pub mod strategy;
 pub mod ui;
+pub mod utils;
 pub mod workflow;
 pub mod workspace;
 
@@ -12,7 +13,8 @@ pub mod workspace;
 pub use config::{ContextBudget, ContextType, GlobalConfig, ProjectContext};
 pub use error::{ToadError, ToadResult};
 pub use models::{
-    ActivityTier, ProjectDetail, StackStrategy, SubmoduleDetail, TargetSource, VcsStatus,
+    ActivityTier, ChangelogHistory, ChangeType, EcosystemChangelog, ProjectChange, ProjectDetail,
+    StackStrategy, SubmoduleDetail, TargetSource, VcsStatus,
 };
 pub use registry::{ProjectRegistry, TagRegistry};
 pub use reports::{

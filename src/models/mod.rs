@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub mod changelog;
+
+pub use changelog::{ChangeType, ProjectChange, EcosystemChangelog, ChangelogHistory};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StackStrategy {
     pub name: String,

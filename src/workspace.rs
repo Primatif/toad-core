@@ -333,6 +333,10 @@ impl Workspace {
     pub fn context_json_path(&self) -> PathBuf {
         self.shadows_dir.join("context.json")
     }
+
+    pub fn changelog_path(&self) -> PathBuf {
+        self.shadows_dir.join("CHANGELOG.json")
+    }
 }
 
 impl Default for Workspace {
