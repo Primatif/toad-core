@@ -13,8 +13,8 @@ pub mod workspace;
 pub use config::{ContextBudget, ContextType, GlobalConfig, ProjectContext};
 pub use error::{ToadError, ToadResult};
 pub use models::{
-    ActivityTier, ChangelogHistory, ChangeType, EcosystemChangelog, ProjectChange, ProjectDetail,
-    StackStrategy, SubmoduleDetail, TargetSource, VcsStatus,
+    ActivityTier, ChangelogHistory, ChangeType, EcosystemChangelog, ProjectAtlas, ProjectChange,
+    ProjectDetail, ProjectDna, StackStrategy, SubmoduleDetail, TargetSource, VcsStatus,
 };
 pub use registry::{ProjectRegistry, TagRegistry};
 pub use reports::{

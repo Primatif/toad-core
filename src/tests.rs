@@ -207,6 +207,7 @@ fn test_project_registry_serialization() -> Result<()> {
         source: TargetSource::PondProject,
         total_size: 0,
         bloat_index: 0.0,
+        dna: ProjectDna::default(),
     });
 
     // Mock the config dir for testing

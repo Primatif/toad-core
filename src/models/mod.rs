@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub mod atlas;
 pub mod changelog;
 
+pub use atlas::ProjectAtlas;
 pub use changelog::{ChangeType, ProjectChange, EcosystemChangelog, ChangelogHistory};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -89,6 +91,13 @@ impl std::fmt::Display for TargetSource {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProjectDna {
+    pub roles: Vec<String>, // e.g. "Data Layer", "API Surface", "CLI"
+    pub capabilities: Vec<String>, // e.g. "JWT Auth", "Postgres"
+    pub structural_patterns: Vec<String>, // e.g. "Clean Architecture", "Actor Pattern"
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectDetail {
     pub name: String,
@@ -107,4 +116,6 @@ pub struct ProjectDetail {
     pub total_size: u64,
     #[serde(default)]
     pub bloat_index: f64,
+    #[serde(default)]
+    pub dna: ProjectDna,
 }

@@ -93,6 +93,11 @@ impl ProjectRegistry {
         if !path.exists() {
             return Ok(Self::default());
         }
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                return Ok(Self::default());
+            }
+        }
         let content = fs::read_to_string(path)?;
         let registry = serde_json::from_str(&content)?;
         Ok(registry)

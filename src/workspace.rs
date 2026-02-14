@@ -59,7 +59,7 @@ impl Workspace {
                     .ok()
                     .filter(|p| p.exists())
                     .and_then(|p| fs::canonicalize(p).ok())
-                    .unwrap_or(root_dir);
+                    .unwrap_or_else(|| root_dir.clone());
                 let projects_dir = if base_dir.join("projects").exists() {
                     base_dir.join("projects")
                 } else {
@@ -106,9 +106,9 @@ impl Workspace {
             let projects_dir = config.active_path().unwrap_or_else(|_| PathBuf::from("."));
             
             let projects_dir = if projects_dir.exists() {
-                fs::canonicalize(projects_dir)?
+                fs::canonicalize(projects_dir).unwrap_or_else(|_| PathBuf::from("."))
             } else {
-                projects_dir
+                PathBuf::from(".")
             };
 
             let shadows_dir = if let Some(name) = &active_context_name {
@@ -322,6 +322,10 @@ impl Workspace {
 
     pub fn changelog_path(&self) -> PathBuf {
         self.shadows_dir.join("CHANGELOG.json")
+    }
+
+    pub fn atlas_path(&self) -> PathBuf {
+        self.shadows_dir.join("ATLAS.json")
     }
 
     pub fn stored_fingerprint(&self) -> u64 {
