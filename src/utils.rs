@@ -1,5 +1,5 @@
 /// Simple token estimator based on characters / 4 approximation.
-/// [IMPORTANT] This is a heuristic for token usage and NOT a precise 
+/// [IMPORTANT] This is a heuristic for token usage and NOT a precise
 /// count for any specific model. It is intended for budget-aware truncation.
 pub fn estimate_tokens(text: &str) -> usize {
     text.chars().count() / 4

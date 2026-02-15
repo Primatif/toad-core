@@ -1,6 +1,6 @@
+use super::{ActivityTier, VcsStatus};
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
-use super::{ActivityTier, VcsStatus};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ChangeType {

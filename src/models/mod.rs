@@ -5,7 +5,7 @@ pub mod atlas;
 pub mod changelog;
 
 pub use atlas::ProjectAtlas;
-pub use changelog::{ChangeType, ProjectChange, EcosystemChangelog, ChangelogHistory};
+pub use changelog::{ChangeType, ChangelogHistory, EcosystemChangelog, ProjectChange};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StackStrategy {
@@ -93,7 +93,7 @@ impl std::fmt::Display for TargetSource {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProjectDna {
-    pub roles: Vec<String>, // e.g. "Data Layer", "API Surface", "CLI"
+    pub roles: Vec<String>,        // e.g. "Data Layer", "API Surface", "CLI"
     pub capabilities: Vec<String>, // e.g. "JWT Auth", "Postgres"
     pub structural_patterns: Vec<String>, // e.g. "Clean Architecture", "Actor Pattern"
 }

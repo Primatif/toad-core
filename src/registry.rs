@@ -1,6 +1,6 @@
 use crate::config::GlobalConfig;
-use crate::models::ProjectDetail;
 use crate::error::ToadResult;
+use crate::models::ProjectDetail;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -93,10 +93,10 @@ impl ProjectRegistry {
         if !path.exists() {
             return Ok(Self::default());
         }
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                return Ok(Self::default());
-            }
+        if let Some(parent) = path.parent()
+            && !parent.exists()
+        {
+            return Ok(Self::default());
         }
         let content = fs::read_to_string(path)?;
         let registry = serde_json::from_str(&content)?;

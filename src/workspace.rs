@@ -54,10 +54,10 @@ impl Workspace {
         // Tier 2: TOAD_ROOT env var (explicit project override)
         if let Ok(env_root) = std::env::var("TOAD_ROOT") {
             let root_dir = safe_canonicalize(PathBuf::from(env_root));
-            
+
             // Check if there is an active context in config to resolve shadows
             let config = GlobalConfig::load(None).ok().flatten();
-            
+
             if let Some(config) = config {
                 // TOAD_ROOT always overrides projects_dir
                 let projects_dir = if root_dir.join("projects").exists() {
@@ -65,7 +65,7 @@ impl Workspace {
                 } else {
                     root_dir.clone()
                 };
-                
+
                 let active_context = config.active_context;
                 let shadows_dir = if let Some(name) = &active_context {
                     GlobalConfig::context_dir(name, None)?.join("shadows")
@@ -104,7 +104,7 @@ impl Workspace {
         if let Ok(Some(config)) = GlobalConfig::load(None) {
             let active_context_name = config.active_context.clone();
             let projects_dir = config.active_path().unwrap_or_else(|_| PathBuf::from("."));
-            
+
             let projects_dir = if projects_dir.exists() {
                 safe_canonicalize(projects_dir)
             } else {
@@ -137,7 +137,7 @@ impl Workspace {
     fn migrate_legacy_to_global(legacy_root: PathBuf) -> ToadResult<Self> {
         let toad_home = GlobalConfig::config_dir(None)?;
         let context_name = "default";
-        
+
         // 1. Create global config
         let mut project_contexts = std::collections::HashMap::new();
         project_contexts.insert(
@@ -184,13 +184,15 @@ impl Workspace {
 
     pub fn new() -> Self {
         Self::discover().unwrap_or_else(|_| {
-             let home = dirs::home_dir().map(|h| h.join(".toad")).unwrap_or_else(|| PathBuf::from("."));
-             Self {
+            let home = dirs::home_dir()
+                .map(|h| h.join(".toad"))
+                .unwrap_or_else(|| PathBuf::from("."));
+            Self {
                 toad_home: home.clone(),
                 projects_dir: PathBuf::from("."),
                 shadows_dir: home.join("shadows"),
                 active_context: None,
-             }
+            }
         })
     }
 

@@ -12,11 +12,11 @@ traits, error types, and configuration that all crates speak.
 - **Data Models** — `ProjectDetail`, `SubmoduleDetail`, `ActivityTier`,
   `VcsStatus`, `StackStrategy`, `EcosystemChangelog`, and more. All derive
   `Serialize + Deserialize` for JSON output (Schema-First Contract).
-- **Workspace Management** — `Workspace` struct handles discovery of
-  `~/.toad/` global context, active context resolution, fingerprinting, and
-  shadow directory management.
-- **Project Registry** — `ProjectRegistry` and `TagRegistry` for persisting
-  and loading discovered project metadata.
+- **Workspace Management** — `Workspace` struct handles discovery of `~/.toad/`
+  global context, active context resolution, fingerprinting, and shadow
+  directory management.
+- **Project Registry** — `ProjectRegistry` and `TagRegistry` for persisting and
+  loading discovered project metadata.
 - **Report Types** — `StatusReport`, `AnalyticsReport`, `BatchOperationReport`,
   `BatchCleanReport`, `SearchResult`, and all multi-repo git report types.
 - **Error Surface** — `ToadError` enum for typed, programmatic error handling

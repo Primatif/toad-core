@@ -9,54 +9,78 @@ pub struct StrategyRegistry {
 }
 
 const DEFAULT_STRATEGIES: &[(&str, &str)] = &[
-    ("rust.toml", r##"name = "Rust"
+    (
+        "rust.toml",
+        r##"name = "Rust"
 match_files = ["Cargo.toml"]
 artifacts = ["target"]
 tags = ["#rust"]
 priority = 10
-"##),
-    ("node.toml", r##"name = "NodeJS"
+"##,
+    ),
+    (
+        "node.toml",
+        r##"name = "NodeJS"
 match_files = ["package.json"]
 artifacts = ["node_modules", "dist", ".next", "build", "out"]
 tags = ["#nodejs"]
 priority = 10
-"##),
-    ("go.toml", r##"name = "Go"
+"##,
+    ),
+    (
+        "go.toml",
+        r##"name = "Go"
 match_files = ["go.mod"]
 artifacts = ["bin", "vendor"]
 tags = ["#go"]
 priority = 10
-"##),
-    ("python.toml", r##"name = "Python"
+"##,
+    ),
+    (
+        "python.toml",
+        r##"name = "Python"
 match_files = ["requirements.txt", "pyproject.toml"]
 artifacts = ["__pycache__", ".venv", "venv", ".pytest_cache", "build", "dist"]
 tags = ["#python"]
 priority = 10
-"##),
-    ("monorepo.toml", r##"name = "Monorepo"
+"##,
+    ),
+    (
+        "monorepo.toml",
+        r##"name = "Monorepo"
 match_files = ["nx.json", "turbo.json", "go.work", "lerna.json"]
 artifacts = ["node_modules", "target", ".turbo", "dist"]
 tags = ["#monorepo"]
 priority = 20
-"##),
-    ("docker.toml", r##"name = "Docker"
+"##,
+    ),
+    (
+        "docker.toml",
+        r##"name = "Docker"
 match_files = ["Dockerfile"]
 artifacts = []
 tags = ["#docker"]
 priority = 5
-"##),
-    ("tauri.toml", r##"name = "Tauri"
+"##,
+    ),
+    (
+        "tauri.toml",
+        r##"name = "Tauri"
 match_files = ["tauri.conf.json"]
 artifacts = ["src-tauri/target", "src-tauri/bin"]
 tags = ["#tauri", "#desktop"]
 priority = 15
-"##),
-    ("wails.toml", r##"name = "Wails"
+"##,
+    ),
+    (
+        "wails.toml",
+        r##"name = "Wails"
 match_files = ["wails.json", "Wails.json"]
 artifacts = ["build/bin", "frontend/dist"]
 tags = ["#wails", "#desktop"]
 priority = 15
-"##),
+"##,
+    ),
 ];
 
 impl StrategyRegistry {

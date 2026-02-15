@@ -46,7 +46,7 @@ fn test_get_fingerprint() -> Result<()> {
     let dir = tempdir()?;
     let projects_dir = dir.path().join("projects");
     fs::create_dir(&projects_dir)?;
-    
+
     let ws = Workspace {
         toad_home: dir.path().join(".toad"),
         projects_dir: projects_dir.clone(),
@@ -78,7 +78,7 @@ fn test_fingerprint_performance() -> Result<()> {
     let dir = tempdir()?;
     let projects_dir = dir.path().join("projects");
     fs::create_dir(&projects_dir)?;
-    
+
     let ws = Workspace {
         toad_home: dir.path().join(".toad"),
         projects_dir: projects_dir.clone(),
@@ -149,7 +149,7 @@ fn test_strategy_registry_embedded_and_custom() -> Result<()> {
     // 2. Test custom override
     let custom_dir = dir.path().join("strategies/custom");
     fs::create_dir_all(&custom_dir)?;
-    
+
     let rust_override = r##"name = "Rust Custom"
 match_files = ["Cargo.toml"]
 artifacts = ["custom_target"]
@@ -159,7 +159,11 @@ priority = 100
     fs::write(custom_dir.join("rust.toml"), rust_override)?;
 
     let registry2 = crate::strategy::StrategyRegistry::load()?;
-    let rust = registry2.strategies.iter().find(|s| s.match_files.contains(&"Cargo.toml".to_string())).unwrap();
+    let rust = registry2
+        .strategies
+        .iter()
+        .find(|s| s.match_files.contains(&"Cargo.toml".to_string()))
+        .unwrap();
     assert_eq!(rust.name, "Rust Custom");
     assert_eq!(rust.priority, 100);
     assert_eq!(rust.priority, 100);
@@ -247,7 +251,10 @@ fn test_workspace_discovery_tiers() -> Result<()> {
     }
     let ws = Workspace::discover()?;
     assert_eq!(fs::canonicalize(&ws.projects_dir)?, projects_root_path);
-    assert_eq!(fs::canonicalize(&ws.toad_home)?, fs::canonicalize(&config_path)?);
+    assert_eq!(
+        fs::canonicalize(&ws.toad_home)?,
+        fs::canonicalize(&config_path)?
+    );
 
     unsafe {
         std::env::remove_var("TOAD_ROOT");
@@ -275,13 +282,20 @@ fn test_workspace_discovery_tiers() -> Result<()> {
     }
 
     let ws2 = Workspace::discover()?;
-    assert_eq!(fs::canonicalize(&ws2.projects_dir)?, fs::canonicalize(&legacy_root)?);
+    assert_eq!(
+        fs::canonicalize(&ws2.projects_dir)?,
+        fs::canonicalize(&legacy_root)?
+    );
     assert_eq!(ws2.active_context, Some("default".to_string()));
-    
+
     // Check if global config was created
     assert!(config_path2.join("config.json").exists());
     // Check if shadows were migrated to the context dir
-    assert!(config_path2.join("contexts/default/shadows/tags.json").exists());
+    assert!(
+        config_path2
+            .join("contexts/default/shadows/tags.json")
+            .exists()
+    );
 
     std::env::set_current_dir(original_cwd)?;
     unsafe {

@@ -39,8 +39,12 @@ pub struct ContextBudget {
     pub project_tokens: usize,
 }
 
-fn default_ecosystem_tokens() -> usize { 2000 }
-fn default_project_tokens() -> usize { 4000 }
+fn default_ecosystem_tokens() -> usize {
+    2000
+}
+fn default_project_tokens() -> usize {
+    4000
+}
 
 impl Default for ContextBudget {
     fn default() -> Self {
@@ -62,7 +66,9 @@ pub struct GlobalConfig {
     pub budget: ContextBudget,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 impl Default for GlobalConfig {
     fn default() -> Self {
@@ -80,7 +86,7 @@ fn move_xdev<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> std::io::Result<
     let from = from.as_ref();
     let to = to.as_ref();
     if let Err(e) = fs::rename(from, to) {
-        let is_xdev = e.kind() == std::io::ErrorKind::Other 
+        let is_xdev = e.kind() == std::io::ErrorKind::Other
             || e.raw_os_error() == Some(18) // Unix EXDEV
             || e.raw_os_error() == Some(17); // Windows ERROR_NOT_SAME_DEVICE
 
@@ -141,7 +147,7 @@ impl GlobalConfig {
         if let Some(base) = base_dir {
             return Ok(base.to_path_buf());
         }
-        
+
         let overridden = std::env::var("TOAD_CONFIG_DIR")
             .or_else(|_| std::env::var("TOAD_HOME"))
             .ok();
@@ -155,9 +161,9 @@ impl GlobalConfig {
             }
         }
 
-        dirs::home_dir()
-            .map(|h| h.join(".toad"))
-            .ok_or_else(|| crate::error::ToadError::Config("Could not find home directory".to_string()))
+        dirs::home_dir().map(|h| h.join(".toad")).ok_or_else(|| {
+            crate::error::ToadError::Config("Could not find home directory".to_string())
+        })
     }
 
     pub fn contexts_dir(base_dir: Option<&Path>) -> ToadResult<PathBuf> {
