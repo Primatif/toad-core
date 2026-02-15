@@ -76,19 +76,85 @@ impl Default for GlobalConfig {
     }
 }
 
+fn move_xdev<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> std::io::Result<()> {
+    let from = from.as_ref();
+    let to = to.as_ref();
+    if let Err(e) = fs::rename(from, to) {
+        let is_xdev = e.kind() == std::io::ErrorKind::Other 
+            || e.raw_os_error() == Some(18) // Unix EXDEV
+            || e.raw_os_error() == Some(17); // Windows ERROR_NOT_SAME_DEVICE
+
+        if is_xdev {
+            if from.is_dir() {
+                copy_dir_all(from, to)?;
+                fs::remove_dir_all(from)?;
+            } else {
+                copy_file_or_symlink(from, to)?;
+                fs::remove_file(from)?;
+            }
+        } else {
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+fn copy_file_or_symlink<P: AsRef<Path>, Q: AsRef<Path>>(src: P, dst: Q) -> std::io::Result<()> {
+    let src = src.as_ref();
+    let dst = dst.as_ref();
+    let meta = src.symlink_metadata()?;
+    if meta.file_type().is_symlink() {
+        let target = fs::read_link(src)?;
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, dst)?;
+        #[cfg(windows)]
+        {
+            if src.is_dir() {
+                std::os::windows::fs::symlink_dir(target, dst)?;
+            } else {
+                std::os::windows::fs::symlink_file(target, dst)?;
+            }
+        }
+    } else {
+        fs::copy(src, dst)?;
+    }
+    Ok(())
+}
+
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let dst_path = dst.as_ref().join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst_path)?;
+        } else {
+            copy_file_or_symlink(entry.path(), dst_path)?;
+        }
+    }
+    Ok(())
+}
+
 impl GlobalConfig {
     pub fn config_dir(base_dir: Option<&Path>) -> ToadResult<PathBuf> {
         if let Some(base) = base_dir {
             return Ok(base.to_path_buf());
         }
-        if let Ok(overridden) = std::env::var("TOAD_CONFIG_DIR") {
-            let p = PathBuf::from(overridden);
+        
+        let overridden = std::env::var("TOAD_CONFIG_DIR")
+            .or_else(|_| std::env::var("TOAD_HOME"))
+            .ok();
+
+        if let Some(overridden_path) = overridden {
+            let p = PathBuf::from(overridden_path);
             if p.exists() {
                 return Ok(fs::canonicalize(p)?);
             } else {
                 return Ok(p);
             }
         }
+
         dirs::home_dir()
             .map(|h| h.join(".toad"))
             .ok_or_else(|| crate::error::ToadError::Config("Could not find home directory".to_string()))
@@ -181,7 +247,7 @@ impl GlobalConfig {
             if legacy_registry.exists() {
                 let target_registry = target_dir.join("registry.json");
                 if !target_registry.exists() {
-                    fs::rename(&legacy_registry, &target_registry)?;
+                    move_xdev(&legacy_registry, &target_registry)?;
                     messages.push(format!("Migrated registry.json to {:?}", target_registry));
                 }
             }
@@ -192,7 +258,7 @@ impl GlobalConfig {
                     let entry = entry?;
                     let target_path = target_shadows.join(entry.file_name());
                     if !target_path.exists() {
-                        fs::rename(entry.path(), &target_path)?;
+                        move_xdev(entry.path(), &target_path)?;
                     }
                 }
                 let _ = fs::remove_dir(&legacy_shadows);

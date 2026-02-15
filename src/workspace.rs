@@ -36,37 +36,37 @@ pub const HIGH_VALUE_FILES: &[&str] = &[
     ".git/index",
 ];
 
+fn safe_canonicalize(p: PathBuf) -> PathBuf {
+    fs::canonicalize(&p).unwrap_or_else(|_| {
+        if p.is_absolute() {
+            p
+        } else {
+            std::env::current_dir().map(|cwd| cwd.join(&p)).unwrap_or(p)
+        }
+    })
+}
+
 impl Workspace {
     pub fn discover() -> ToadResult<Self> {
-        // Tier 1: TOAD_HOME env var
-        let toad_home = if let Ok(env_home) = std::env::var("TOAD_HOME") {
-            fs::canonicalize(PathBuf::from(env_home))?
-        } else {
-            GlobalConfig::config_dir(None)?
-        };
+        // Tier 1: Configuration Directory (TOAD_CONFIG_DIR or TOAD_HOME)
+        let toad_home = GlobalConfig::config_dir(None)?;
 
         // Tier 2: TOAD_ROOT env var (explicit project override)
         if let Ok(env_root) = std::env::var("TOAD_ROOT") {
-            let root_dir = fs::canonicalize(PathBuf::from(env_root))?;
+            let root_dir = safe_canonicalize(PathBuf::from(env_root));
             
             // Check if there is an active context in config to resolve shadows
             let config = GlobalConfig::load(None).ok().flatten();
             
             if let Some(config) = config {
-                // Resolve base path from config, then check for projects/ subdirectory.
-                // This mirrors migrate_legacy_to_global which returns root/projects/ when it exists.
-                let base_dir = config.active_path()
-                    .ok()
-                    .filter(|p| p.exists())
-                    .and_then(|p| fs::canonicalize(p).ok())
-                    .unwrap_or_else(|| root_dir.clone());
-                let projects_dir = if base_dir.join("projects").exists() {
-                    base_dir.join("projects")
+                // TOAD_ROOT always overrides projects_dir
+                let projects_dir = if root_dir.join("projects").exists() {
+                    root_dir.join("projects")
                 } else {
-                    base_dir
+                    root_dir.clone()
                 };
+                
                 let active_context = config.active_context;
-
                 let shadows_dir = if let Some(name) = &active_context {
                     GlobalConfig::context_dir(name, None)?.join("shadows")
                 } else {
@@ -106,7 +106,7 @@ impl Workspace {
             let projects_dir = config.active_path().unwrap_or_else(|_| PathBuf::from("."));
             
             let projects_dir = if projects_dir.exists() {
-                fs::canonicalize(projects_dir).unwrap_or_else(|_| PathBuf::from("."))
+                safe_canonicalize(projects_dir)
             } else {
                 PathBuf::from(".")
             };
