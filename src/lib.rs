@@ -13,9 +13,11 @@ pub mod workspace;
 pub use config::{ContextBudget, ContextType, GlobalConfig, ProjectContext};
 pub use error::{ToadError, ToadResult};
 pub use models::{
-    ActivityTier, ChangeType, ChangelogHistory, EcosystemChangelog, ProjectAtlas, ProjectChange,
-    ProjectDetail, ProjectDna, StackStrategy, SubmoduleDetail, TargetSource, VcsStatus,
+    AiReadiness, ActivityTier, DebtIndicators, DependencyGraph, DependencyNode, HealthScore, PatternMetrics,
+    ProjectAtlas, ProjectDetail, ProjectDna, ProjectInsight, StackStrategy, SubmoduleDetail,
+    SubmoduleHealth, TargetSource, TrendPoint, TrendReport, VcsStatus, VelocityMetrics,
 };
+pub use models::{ChangeType, ChangelogHistory, EcosystemChangelog, ProjectChange};
 pub use registry::{ProjectRegistry, TagRegistry};
 pub use reports::{
     AnalyticsReport, BatchCleanReport, BatchOperationReport, BranchGroup, BranchInfo,

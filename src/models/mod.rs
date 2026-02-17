@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub mod analytics;
 pub mod atlas;
 pub mod changelog;
 
+pub use analytics::*;
 pub use atlas::ProjectAtlas;
 pub use changelog::{ChangeType, ChangelogHistory, EcosystemChangelog, ProjectChange};
 
