@@ -194,8 +194,10 @@ priority = 10
 
 #[test]
 fn test_project_registry_serialization() -> Result<()> {
-    let mut registry = ProjectRegistry::default();
-    registry.fingerprint = 12345;
+    let mut registry = ProjectRegistry {
+        fingerprint: 12345,
+        ..Default::default()
+    };
     registry.projects.push(ProjectDetail {
         name: "test-proj".to_string(),
         path: PathBuf::from("/tmp/test-proj"),
