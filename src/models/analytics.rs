@@ -24,9 +24,9 @@ pub struct VelocityMetrics {
     pub lines_added: usize,
     pub lines_removed: usize,
     pub active_contributors: Vec<String>,
-    pub local_deployment_frequency: f64, // builds per day
+    pub local_deployment_frequency: f64,  // builds per day
     pub local_lead_time_for_changes: f64, // hours from first commit to build
-    pub trend: String, // e.g. "↗️ Increasing"
+    pub trend: String,                    // e.g. "↗️ Increasing"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,7 +38,7 @@ pub struct DebtIndicators {
     pub test_coverage: Option<f32>,
     pub outdated_dependencies: Vec<String>,
     pub churn_complexity_risk: Vec<String>, // files with high churn and high complexity
-    pub debt_score: f32, // 0-10
+    pub debt_score: f32,                    // 0-10
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
