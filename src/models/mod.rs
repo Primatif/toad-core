@@ -4,10 +4,12 @@ use std::path::PathBuf;
 pub mod analytics;
 pub mod atlas;
 pub mod changelog;
+pub mod diagnostics;
 
 pub use analytics::*;
 pub use atlas::ProjectAtlas;
 pub use changelog::{ChangeType, ChangelogHistory, EcosystemChangelog, ProjectChange};
+pub use diagnostics::{DiagnosticReport, DiagnosticSeverity, ParseDiagnostic};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StackStrategy {
